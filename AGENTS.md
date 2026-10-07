@@ -2,12 +2,12 @@
 
 ## 当前范围与授权
 
-- 工程：Qt Widgets + SQLite工业设备查看器；有效规范见docs/engineering-standards.md v1.0，当前状态见docs/working-state.md，实施前必读。
+- 工程：Qt Widgets + SQLite工业设备查看器；有效规范见docs/engineering-standards.md v1.1，当前状态见docs/working-state.md，实施前必读。
 - 用户已授权全部由Agent开发、连续推进到可交互桌面交付，并用明确标注的模拟反馈迭代；不再要求用户写关键逻辑或逐小功能确认。
 - 当前0.2桌面版本已完成技术交付检查，真实用户体验待反馈。网络/MySQL/Redis是后续单独定义范围的扩展；不得自行启动付费服务、外部发布或删除正常数据。
 - 既有真实验收：环境和记录示例2026-10-07通过，F01-1用户2026-10-08明确验收通过。自动检查、独立静态审查、模拟需求验收和真实人工验收分开记录。
 - 已授权局部排查、实现、验证、文档和本地Git检查点自主推进；重大需求/架构变化、破坏性数据操作、外部发布及新增费用按具体影响确认。
-- origin为https://github.com/GreenLoong/equipment-viewer.git；本轮未推送，远程同步只沿用明确授权范围。
+- origin为https://github.com/GreenLoong/equipment-viewer.git；用户已授权远端同步；每个已验证版本推送到origin，最终更新默认main，保留远端历史，禁止force push。
 
 ## 开发、规范与审查
 
@@ -16,7 +16,7 @@
 - Controller为设备、选中和显隐状态来源；Window不执行SQL，Importer失败不改输出，Scene不访问DB。名称不作为身份标识。
 - 同一文件同时只有一位负责人。主管维护Controller/Window/main/CMake/公共文档与交付；数据负责人维护Importer/导入测试/样例；图形负责人维护Scene/场景测试；独立审查者只读业务实现。
 - 保留用户代码、未提交改动和正常数据库。原记录功能保留；不按行数重新补种设备，不以清库处理结构问题。
-- 首次执行新增或变化的安装/构建/测试/迁移脚本前检查内容；默认使用本机安装，不下载依赖。
+- 首次执行新增或变化的安装/构建/测试/迁移脚本前检查内容；允许下载必要依赖，但先核实来源与安装脚本。
 
 ## 环境与入口
 
@@ -31,7 +31,14 @@
 
 - 额度恢复、换会话或重新分配Agent时先读working-state/handoffs，再核对分支、Git差异和实际工具进程，不能假设旧Agent存活。
 - 及时保存代码和各角色handoff；主管维护汇总状态。验证阶段建立本地提交；额度突发中断不保证还能写最后记录，用最近已保存状态恢复。
-- 基线cbc879f、功能提交8ebe748；最终文档检查点以实际git log为准。当前分支feature/interactive-viewer，不自动推送。
+- 基线cbc879f、功能提交8ebe748；最终文档检查点以实际git log为准。当前分支feature/interactive-viewer，按明确授权同步远端。
 - 源码Git检查点与数据库恢复分开。scripts/checkpoint-data.py使用SQLite online backup并验证quick_check，快照在忽略的.recovery/databases。
 - 恢复不得reset --hard、clean或删除数据库；优先修复分支或针对指定提交回退，保留未完成工作。普通数据库复制前关闭所有使用程序。
 - 提交前检查git diff --check、git diff --cached和git status，避免混入本地配置、生成物、数据库或无关修改；提交不等于真实人工验收。
+
+## 逐版1.0当前执行
+
+- 用户要求逐步更新，当前先0.3，按规范第12节推进0.4/0.5/0.6/0.9/1.0，不能只改版本号或直接宣称1.0。
+- 所有新Agent读取docs/engineering-standards.md v1.1、docs/working-state.md和当前版本功能卡。专职模拟用户与专职review分工必须保留。
+- 授权下载、独立本机服务、持续开发与GitHub推送，不涉及付费或公开部署；保护既有MySQL80/SQLite资料，运行目录和配置不得上传。
+- 当前分支feature/release-1.0。合并origin/main保留初始文档历史，再按阶段推送，不force。不安装未经检查的npm生命周期脚本。

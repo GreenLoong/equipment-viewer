@@ -7,3 +7,65 @@
 
 # Local recovery snapshots
 /.recovery/
+# Local scratch files
+/work/
+
+# Build products
+/build/
+/build-*/
+/cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+*.obj
+*.o
+*.exe
+*.dll
+*.so
+*.so.*
+*.dylib
+*.pdb
+*.ilk
+*.a
+*.lib
+
+# Local IDE settings
+.vs/
+.idea/
+.vscode/
+*.user
+*.user.*
+CMakeUserPresets.json
+
+# Runtime databases and SQLite sidecar files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+/data/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.local.json
+*.local.ini
+*.pem
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+# 1.0 local services and dependencies
+/.runtime/
+/api/runtime/
+/api/node_modules/
+/api/coverage/
+*.log
+*.db
+*.db-*
+*.sqlite3
+*.sqlite3-*
