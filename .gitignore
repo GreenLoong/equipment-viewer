@@ -1,0 +1,6 @@
+/build/
+/data/
+/CMakeUserPresets.json
+*.user
+*.sqlite
+*.sqlite-*
