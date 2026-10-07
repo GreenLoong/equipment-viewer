@@ -54,3 +54,27 @@
 已复查importData修正，refreshEquipmentChoices失败提示不再被成功文本覆盖。GL清理断开连接的修复与3次父窗销毁检查仍保留。暂无阻断打包验证问题。
 
 待统一的小项：main的applicationVersion仍为0.1.0而包为0.2.0；使用指南应明确普通复制备份前关闭应用（运行中用online backup）。已反馈主管。最终待核对包文件/ZIP、manifest与exe哈希、依赖隔离运行结果及最终Git检查点，随后落最终审查结论。
+
+## 最终交付复核结论（2026-10-08）
+
+结论：未发现阻断当前本地Windows桌面包交付的问题；真实用户体验尚未验收。实现对应功能提交8ebe748244bd1adc7b282e3e19db2b68d71c12bf，相对cbc879f基线的实现、规范、恢复、测试和脚本已独立只读审查。已反馈GL生命周期与导入错误提示问题，实际修复后均已复查。
+
+更正前次版本建议：最新src/main.cpp第21行实际为0.2.0，与CMake、manifest、指南一致；前次0.1.0观察属于较早文件内容，现已失效。最终指南已明确普通复制备份前关闭所有使用数据库的程序，运行中使用一致性备份工具。
+
+实际只读核对：
+- bundle为C:/Users/23871/Documents/Codex/2026-10-07/new-chat/outputs/equipment-viewer-0.2-20261008-031644，ZIP同名。
+- manifest对应sourceCommit 8ebe748244bd1adc7b282e3e19db2b68d71c12bf，sourceHasUncommittedChanges=false，databaseIncluded=false。
+- bundle与build/bin的EXE SHA256均为C111C6A52729850D8A43871967682BC7478EE3DF595C1EB699D946709F7C672F，与manifest一致。
+- 目录和ZIP均含启动入口、指南、两份虚构JSON、Qt及MinGW运行库、OpenGL/OpenGLWidgets、qwindows/qoffscreen/qsqlite插件；没有data数据库、.env或密钥文件。
+- 已实际查看outputs/设备查看器预览.png，设备选择、导入、三个零件、三维模型、显隐/隔离/查看全部、只读属性、未选中提示和搜索均可见。
+- 最后只读Git status为空；主管将继续保存最终验证与交付文档，不表示可据旧状态断言之后永远干净。
+
+主管实际验证（非审查者自行运行）：
+- 最终九项CTest全通过，7.49秒，临时数据。
+- 串行原生Scene（包括3次父窗析构）、Window五步、main smoke均退出0，原生OpenGL。
+- bundle在PATH仅Windows/System32、清除Qt插件环境变量后原生smoke退出0。
+- bundle在同一临时库运行两次equipment-check，均一台设备三个零件、退出0。
+
+审查者仅运行只读文件/Git/hash/ZIP清单检查及查看截图；没有自行启动应用、构建或运行测试，未改业务文件。最终记录需继续区分主管执行验证、独立静态审查、明确标记模拟反馈以及真实用户验收。
+
+已知限制保留：复杂设备性能和其他Windows电脑未验证；软件投影遮挡排序及极端跨度微小零件精度有限。网络/MySQL/Redis为后续扩展，无本轮运行依赖。恢复先读工作状态/角色交接并核对实际文件，不清库、不reset/clean，不要求用户重新编写已授权逻辑或逐项确认。

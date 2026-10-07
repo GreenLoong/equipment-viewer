@@ -222,3 +222,7 @@ chcp 65001 > $null
 ## 版本管理
 
 源码和说明保存在本地 Git；`build/`、数据库及 Qt Creator 个人配置被忽略。Git 不能恢复忽略的数据库文件；需要保留记录时，先关闭程序再复制数据库文件到备份位置。`origin` 已按用户提供的地址绑定到 [GreenLoong/equipment-viewer](https://github.com/GreenLoong/equipment-viewer)，尚未执行推送或发布。
+
+## 0.2 当前交付状态
+
+交互桌面包已完成依赖隔离启动检查和最终独立复核。实际结果见验证记录中2026-10-08交互桌面版本0.2交付章节；模块与修改入口见docs/architecture.md。真实用户体验待反馈。
