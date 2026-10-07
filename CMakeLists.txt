@@ -12,17 +12,25 @@ add_library(record_store src/recordstore.cpp src/recordstore.h)
 target_include_directories(record_store PUBLIC src)
 target_link_libraries(record_store PUBLIC Qt6::Core Qt6::Sql)
 
+add_library(equipment_repository src/equipmentrepository.cpp src/equipmentrepository.h)
+target_include_directories(equipment_repository PUBLIC src)
+target_link_libraries(equipment_repository PUBLIC Qt6::Core Qt6::Sql)
+
+add_library(equipment_window src/equipmentcontroller.cpp src/equipmentcontroller.h
+    src/equipmentwindow.cpp src/equipmentwindow.h)
+target_link_libraries(equipment_window PUBLIC equipment_repository Qt6::Widgets)
+
 add_library(record_window src/mainwindow.cpp src/mainwindow.h)
 target_link_libraries(record_window PUBLIC record_store Qt6::Widgets)
 
 qt_add_executable(qt_sqlite_demo src/main.cpp)
-target_link_libraries(qt_sqlite_demo PRIVATE record_window)
+target_link_libraries(qt_sqlite_demo PRIVATE record_window equipment_window)
 
 add_executable(environment_probe tools/environment_probe.cpp)
 target_link_libraries(environment_probe PRIVATE Qt6::Core Qt6::Sql)
 
 if(MINGW)
-    foreach(target record_store record_window qt_sqlite_demo environment_probe)
+    foreach(target record_store equipment_repository record_window equipment_window qt_sqlite_demo environment_probe)
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endforeach()
 endif()
@@ -33,9 +41,20 @@ if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     add_executable(demo_tests tests/demo_tests.cpp)
     target_link_libraries(demo_tests PRIVATE record_window Qt6::Test)
+    add_executable(equipment_tests tests/equipment_tests.cpp)
+    target_link_libraries(equipment_tests PRIVATE equipment_repository)
+    add_dependencies(equipment_tests qt_sqlite_demo)
+    add_executable(equipment_window_tests tests/equipment_window_tests.cpp)
+    target_link_libraries(equipment_window_tests PRIVATE equipment_window Qt6::Test)
     add_test(NAME environment COMMAND environment_probe)
     add_test(NAME records_and_window COMMAND demo_tests -platform offscreen)
+    add_test(NAME equipment_persistence COMMAND equipment_tests)
+    add_test(NAME equipment_selection COMMAND equipment_window_tests -platform offscreen)
+    add_test(NAME equipment_application_startup COMMAND qt_sqlite_demo -platform offscreen
+        --equipment-view --smoke-test "${CMAKE_BINARY_DIR}/equipment-startup.png")
     add_test(NAME application_startup COMMAND qt_sqlite_demo -platform offscreen
         --smoke-test "${CMAKE_BINARY_DIR}/startup.png")
-    set_tests_properties(environment records_and_window application_startup PROPERTIES TIMEOUT 30)
+    set_tests_properties(environment records_and_window equipment_persistence application_startup
+        equipment_selection equipment_application_startup
+        PROPERTIES TIMEOUT 30)
 endif()

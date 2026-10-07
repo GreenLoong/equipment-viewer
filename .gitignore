@@ -4,3 +4,6 @@
 *.user
 *.sqlite
 *.sqlite-*
+
+# Local recovery snapshots
+/.recovery/

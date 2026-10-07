@@ -1,6 +1,82 @@
 # Qt + SQLite 第一个可运行示例
 
-适用范围：本机 Windows、Qt Widgets、C++17。2026-10-07 创建并通过用户人工验收。当前功能是本地记录的新增与读取。
+适用范围：本机 Windows、Qt Widgets、C++17。本地记录的新增与读取已于 2026-10-07 通过用户人工验收；F01-1 设备资料保存与读取已于 2026-10-08 通过用户人工验收。
+
+## F01-1：设备资料初始化与重启读取
+
+2026-10-07，F01 已进入开发阶段。环境状态为“你已验证通过”，依据见 [验证记录](验证记录.md) 的“实际结果”。本步加入 `EquipmentRepository`，在程序启动时打开数据库、初始化设备资料，并输出设备名称、零件 ID 和名称。设备清单与属性界面留到下一步；原有记录窗口继续可用。F01-1 自动检查和独立审查已通过，用户于 2026-10-08 明确确认“F01-1 验收通过”；F01 整体尚未验收。
+
+在项目目录的 PowerShell 中运行两次（使用同一个文件）：
+
+```powershell
+.\scripts\build.ps1
+.\build\bin\qt_sqlite_demo.exe --equipment-check --database "$PWD\data\f01-acceptance.sqlite"
+.\build\bin\qt_sqlite_demo.exe --equipment-check --database "$PWD\data\f01-acceptance.sqlite"
+```
+
+`f01-acceptance.sqlite` 是单独的人工验收文件，首次使用时应不存在；已有文件保留，不要为重新初始化而删除正常数据。`--equipment-check` 输出后退出，不打开窗口，也不创建记录示例的 `demo_records` 表。正常启动入口仍使用 `data/records.sqlite`，同样会初始化并输出设备资料；已有记录不被清空。Qt Creator 的“应用程序输出”可查看这些输出。
+
+预期输出（DATABASE 后为实际绝对路径）：
+
+```text
+DATABASE: D:/作业/简历/工作模拟/data/f01-acceptance.sqlite
+EQUIPMENT: EQ-001 输送机构
+PART: EQ-001/P-001 底座
+PART: EQ-001/P-002 驱动电机
+PART: EQ-001/P-003 传动轴
+COUNTS: equipment=1 parts=3
+```
+
+人工验收：
+
+1. 首次执行得到一台设备、三个零件，输出的文件路径与参数一致。
+2. 第二次执行数量仍为 `equipment=1 parts=3`，名称和 ID 不变。
+3. 用目录代替文件：`.\build\bin\qt_sqlite_demo.exe --equipment-check --database "$PWD\data"`。应输出数据库路径及 SQLite 打开失败原因，退出码为 1；正常数据库保持完整。
+4. 运行 `.\build\bin\equipment_tests.exe`，应输出 `Persistence: 1 Constraints: 1 Rollback: 1 Commit: 1 Errors: 1 Restart: 1`。写入失败与提交失败检查均使用自动清理的临时数据库。
+
+数据和实现入口：
+
+- [数据设计计划](C:/Users/23871/Documents/Codex/2026-10-07/new-chat/outputs/设备查看器-需求与协作计划-v0.2.md) 第 6.3 节规定字段、单位和约束。`equipment.id` 唯一；`part` 的 `(equipment_id,id)` 联合主键允许不同设备使用相同零件 ID。每个 Repository 连接在事务开始前启用并检查外键。
+- `src/equipmentrepository.h` 定义 `Equipment`、`Part` 和 Repository。`openDatabase()` 连接文件；`initialize()` 在事务中检查结构，首次建两张表并写入完整样例；`loadEquipment()` 读设备；`loadParts()` 通过 `WHERE equipment_id = ?` 绑定设备 ID 并读取该设备的零件。没有匹配设备时查询成功并返回空集合；执行失败则返回 false 并提供 `lastError()`。
+- 建表语句使用 `STRICT`、`NOT NULL`、`CHECK` 和外键；拒绝空白必填文本、重复主键、孤立零件、未知形状、非有限位置或尺寸。box 的三轴尺寸为正，圆柱字段为空；cylinder 的半径和长度为正，box 尺寸为空。保存前也进行 C++ 校验。
+- `saveEquipmentWithParts()` 是底层原子保存操作，复用初始化的写入逻辑并用于失败测试；本步没有 JSON 导入、覆盖、编辑或删除入口。设备及全部零件一起提交，任何 SQL 或提交失败都回滚，错误包含操作、相关 ID 和驱动原因。
+- 首次初始化以两张业务表均不存在为依据，即使文件已有 `demo_records` 也可初始化。成功后不按行数补种；已有空表或被修改的资料不会被样例覆盖。首版只接受由当前建表语句创建的两张表，缺表或定义（包括约束）不一致时报错并保留文件；暂不进行结构迁移。[SQLite STRICT 表](https://www.sqlite.org/stricttables.html)要求 SQLite 3.37 或以上，本机驱动满足此要求。
+
+样例材料、尺寸和位置为本步补充的学习用示例值，长度单位毫米，位置为几何体中心，Z 向上，圆柱轴线沿 X：
+
+| 零件 ID | 名称 | 材料 | 形状 | 位置 X/Y/Z | 尺寸 |
+| --- | --- | --- | --- | --- | --- |
+| P-001 | 底座 | Q235 | box | 0/0/20 | X/Y/Z = 600/300/40 |
+| P-002 | 驱动电机 | 铝合金 | box | -150/0/120 | X/Y/Z = 200/160/160 |
+| P-003 | 传动轴 | 45钢 | cylinder | 120/0/120 | 半径 20，长度 400 |
+
+代码导读：`src/main.cpp` 选择路径 → Repository 打开、初始化 → 读取设备 → 按设备 ID 读取零件 → 输出。`tests/equipment_tests.cpp` 通过真实 SQL 约束、第三个零件触发器失败及读锁阻塞提交来验证错误路径，并启动两个独立进程验证重启。SQL 值采用参数绑定，引号和 SQL 片段会作为文本保存。外键机制见 [SQLite 官方说明](https://www.sqlite.org/foreignkeys.html)，参数绑定见 [Qt QSqlQuery 文档](https://doc.qt.io/qt-6.11/qsqlquery.html)。
+
+## F01-2：零件清单与只读属性联动
+
+2026-10-08，F01-2 第 1～4 步已实现：加载 EQ-001，顶部显示设备名称和 ID，左侧显示三个零件的名称与 ID；首次打开没有选择，右侧提示“请选择零件”。点击后显示只读 ID、原始名称和材料、中文形状、中心位置和适用尺寸，位置与尺寸分组注明毫米。长方体显示 X/Y/Z，圆柱显示半径和长度；切换形状时清空并隐藏不适用字段。“清除选择”按钮同步清单高亮、控制器选中 ID 和全部属性，可重复清除。完整 F01-2 构建、自动检查和独立静态审查通过，人工验收待完成。
+
+从项目目录打开设备窗口：
+
+```powershell
+.\build\bin\qt_sqlite_demo.exe --equipment-view --database "$PWD\data\f01-acceptance.sqlite"
+```
+
+Qt Creator 可选择 `qt_sqlite_demo`，在运行参数中设置 `--equipment-view --database "D:/作业/简历/工作模拟/data/f01-acceptance.sqlite"`。不带 `--equipment-view` 时仍进入原记录窗口；`--equipment-check` 的输出验收入口保持可用。使用哪个文件就在该文件读取或首次初始化，不复制或删除已有资料。
+
+人工验收：
+
+1. 确认顶部为“输送机构 / EQ-001”，左侧三个零件且首次没有高亮，右侧提示“请选择零件”。
+2. 按“底座 → 传动轴 → 驱动电机 → 清除选择 → 再选传动轴”操作。每次核对 ID、名称、材料、形状、中心位置和尺寸，对照本文件 F01-1 的样例表格。
+3. 底座与驱动电机只显示长方体三轴尺寸，传动轴只显示半径与长度；相互切换没有前一种形状字段或旧值残留，各位置/尺寸分组注明毫米。
+4. 点击“清除选择”后，清单没有高亮，右侧只有“请选择零件”，没有任何旧属性；重复清除结果不变，再选传动轴恢复圆柱资料。
+5. 关闭后使用同一文件重开，仍是三个零件且首次未选择；不带 `--equipment-view` 仍可打开原记录窗口。
+
+选择链路：`QListWidgetItem::data(Qt::UserRole)` 保存零件 ID → `EquipmentWindow::selectFromList()` 将 ID 交给 `EquipmentController::selectPart()` → 控制器在已加载的 `parts_` 中按 ID 查找 → `displayProperties()` 通过 `selectedPart()` 将原始文本和对应数值写入 QLabel。所有值按普通文本显示，不解析名称或材料中的 HTML。更新入口先清空所有值并隐藏两类尺寸组，再填入当前资料并显示适用尺寸；借用的零件指针只在本次同步更新使用，不长期保存。`clearSelection()` 屏蔽清单信号，清空高亮和当前项，将空 ID 交给控制器，再调用同一更新入口；清单自行取消选择也同步清空全部属性。
+
+零件名称和行号不用于查找；点击和清除不执行 SQL。完整局部资料加载成功后才替换控制器状态，新加载成功时重置选择；加载失败保留旧设备、零件、选择与属性，同时显示明确错误。不存在设备、读取失败与有效空设备在测试中分别验证。
+
+运行完整选择检查：`.\build\bin\equipment_window_tests.exe -platform offscreen`，预期 `Controller`、`CachedClicks`、`Identity`、`EmptyAndFailure`、`PropertiesAndClear` 均为 1。全部六项 CTest 由 `scripts/build.ps1` 执行，使用临时数据库，构建、完整操作链与原功能回归已通过。原生窗口操作链截图可由 `.\build\bin\equipment_window_tests.exe -platform windows --snapshot-dir "$PWD\build\f01-2-snapshots"` 导出五步图片；原生启动截图入口为 `.\build\bin\qt_sqlite_demo.exe --equipment-view --smoke-test "$PWD\build\equipment-native.png"`。这两个入口均使用临时数据库并退出，不操作正常资料。实际依据见 [验证记录](验证记录.md) 的“F01-2 第 4 步与完整功能检查”。
 
 ## 功能与验收
 
@@ -67,7 +143,7 @@ SQLite 通过 Qt 的 `QSQLITE` 驱动使用，不需要运行数据库服务器�
 .\build\bin\qt_sqlite_demo.exe --smoke-test "$PWD\build\window.png"
 ```
 
-`environment_probe` 使用临时数据库验证建表、参数绑定写入、关闭后重新读取，成功输出 `ENVIRONMENT PASS`。CTest 包含环境检查、功能检查和主程序启动截图检查。功能检查覆盖中文与引号、SQL 片段按文本保存、记录顺序、空输入、长度边界、错误路径、损坏文件、按钮和回车保存、重新打开窗口后的列表。测试数据库自动清理，不使用用户记录。
+`environment_probe` 使用临时数据库验证建表、参数绑定写入、关闭后重新读取，成功输出 `ENVIRONMENT PASS`。CTest 包含环境检查、记录与窗口检查、设备持久化检查、设备清单选择检查、设备窗口启动截图和原记录窗口启动截图。记录与窗口检查覆盖中文与引号、SQL 片段按文本保存、记录顺序、空输入、长度边界、错误路径、损坏文件、按钮和回车保存、重新打开窗口后的列表。设备检查范围见本文件 F01-1、F01-2 章节及验证记录。测试数据库自动清理，不使用用户记录。
 
 `--smoke-test` 使用临时数据库显示窗口，保存窗口截图后自动退出。此检查只证明本机窗口启动和绘制，不代替上面的人工验收。
 
@@ -89,8 +165,21 @@ SQLite 通过 Qt 的 `QSQLITE` 驱动使用，不需要运行数据库服务器�
 | 找不到 DLL、Qt 平台插件无法初始化 | 重新运行构建脚本；保留 exe 同目录下的 DLL、`platforms/qwindows.dll` 和 `sqldrivers/qsqlite.dll` |
 | `demo_tests` 提示只有 windows 平台插件可用 | 自动测试使用 offscreen；构建脚本需部署 `platforms/qoffscreen.dll`，不要只复制测试 exe |
 | CMake 复用缓存时异常退出 | 使用当前构建脚本，它已加入 `--fresh`；具体 CMake 内部根因尚未确认 |
+| PowerShell 输出中文变成“杈撻”等乱码 | 程序输出 UTF-8，终端需使用匹配编码；执行下方命令后重新运行程序 |
 | 保存失败 | 先读窗口错误；确认显示的数据库位置可写，文件没有被其他程序长期锁定。写入失败时输入内容保留，可修正后重试 |
 | 记录已保存但列表读取失败 | 点击“刷新”；此状态下记录已经写入，直接重复保存会增加重复记录 |
+
+PowerShell 中文输出排错（2026-10-08）：在运行程序的同一个 PowerShell 窗口中执行：
+
+```powershell
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
+chcp 65001 > $null
+```
+
+随后重新执行 `--equipment-check` 验收命令；原来已显示的乱码不会自动更正。`[Console]::OutputEncoding` 设置控制台输出编码，`$OutputEncoding` 同步向外部程序发送文本时的编码，`chcp` 设置当前控制台代码页。该设置用于当前会话，没有修改数据库、系统语言或代码文件。命令在本机 Windows PowerShell 5.1 的临时进程中验证，目录路径失败用例正确显示“打开数据库 D:/作业/简历/工作模拟 失败”，退出码为 1。
+
+需要让以后新开的 PowerShell 自动应用设置时，在该 PowerShell 中执行 `$PROFILE` 获取当前用户、当前宿主的配置文件路径，将上述三行追加到该文件（保留已有内容；文件不存在时先创建父目录和文件），保存后重新打开 PowerShell。项目启动入口使用 `-NoProfile` 时不会读取个人配置。控制台编码机制见 [Microsoft Console.OutputEncoding 文档](https://learn.microsoft.com/en-us/dotnet/api/system.console.outputencoding)，配置文件位置与加载机制见 [PowerShell profiles](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_profiles?view=powershell-5.1)。
 
 运行库通过本机 `windeployqt` 复制；依据为 [Qt 6.11 Windows 部署文档](https://doc.qt.io/qt-6.11/windows-deployment.html)。本机验证不代表已在其他电脑测试。
 
