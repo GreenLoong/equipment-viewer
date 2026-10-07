@@ -13,6 +13,8 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QShortcut>
+#include <QKeySequence>
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSplitter>
@@ -154,6 +156,10 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
 
     connect(partsList_, &QListWidget::itemSelectionChanged, this, &EquipmentWindow::selectFromList);
     connect(clearSelectionButton_, &QPushButton::clicked, this, &EquipmentWindow::clearSelection);
+    // 窗口快捷键覆盖各控件焦点，只清选择，不修改搜索或显隐。
+    auto *escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    escapeShortcut->setContext(Qt::WindowShortcut);
+    connect(escapeShortcut, &QShortcut::activated, this, &EquipmentWindow::clearSelection);
     connect(search_, &QLineEdit::textChanged, this, [this] {
         rebuildList();
         displayProperties();
@@ -200,7 +206,7 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     });
     connect(fitButton, &QPushButton::clicked, this, [this] { scene_->fitAll(); });
     scene_->onPartPicked = [this](const QString &id) {
-        // 拾取不改变过滤和可见性；过滤掉的对象不留下无高亮的选择。
+        // 模型拾取优先；目标被过滤时清搜索以恢复对应清单高亮。
         const bool listed = [&] {
             for (int row = 0; row < partsList_->count(); ++row) {
                 if (partsList_->item(row)->data(Qt::UserRole).toString() == id)
@@ -208,16 +214,19 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
             }
             return id.isEmpty();
         }();
-        if (!listed) {
-            showStatus(QStringLiteral("该零件被搜索条件过滤，请先清空搜索。"));
+        if (!controller_.selectPart(id)) {
+            showStatus(controller_.lastError(), true);
             return;
         }
-        if (controller_.selectPart(id)) {
-            restoreSelection();
-            displayProperties();
-            syncScene();
-            showStatus(QString());
+        if (!listed) {
+            const QSignalBlocker blocker(search_);
+            search_->clear();
+            rebuildList();
         }
+        restoreSelection();
+        displayProperties();
+        syncScene();
+        showStatus(QString());
     };
 }
 

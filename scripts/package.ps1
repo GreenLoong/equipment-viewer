@@ -1,7 +1,12 @@
-﻿param([Parameter(Mandatory = $true)][string]$OutputRoot)
+﻿param([Parameter(Mandatory = $true)][string]$OutputRoot, [string]$Version)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$cmakeText = [System.IO.File]::ReadAllText((Join-Path $projectRoot 'CMakeLists.txt'))
+if ($cmakeText -notmatch 'project\([^\r\n]*VERSION\s+(\d+\.\d+\.\d+)') { throw '无法读取项目版本。' }
+$actualVersion = $Matches[1]
+if ($Version -and $Version -ne $actualVersion) { throw '禁止用打包参数伪造与源码不同的版本。' }
+$Version = $actualVersion
 $bin = Join-Path $projectRoot 'build\bin'
 $executable = Join-Path $bin 'qt_sqlite_demo.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
@@ -9,7 +14,7 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
 }
 # 每次生成独立目录，避免覆盖用户已经使用的交付包和运行资料。
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$bundleName = "equipment-viewer-0.2-$stamp"
+$bundleName = "equipment-viewer-$Version-$stamp"
 $bundle = Join-Path $OutputRoot $bundleName
 if (Test-Path -LiteralPath $bundle) { throw "交付目录已存在：$bundle" }
 New-Item -ItemType Directory -Path $bundle | Out-Null
@@ -38,7 +43,7 @@ if ($LASTEXITCODE -ne 0) { throw '无法读取源码提交，停止打包。' }
 $sourceChanges = (& git -c "safe.directory=$projectRoot" -C $projectRoot status --porcelain)
 if ($LASTEXITCODE -ne 0) { throw '无法核对源码状态，停止打包。' }
 $manifest = [ordered]@{
-    version = '0.2.0'
+    version = $Version
     sourceCommit = $sourceCommit
     sourceHasUncommittedChanges = [bool]$sourceChanges
     generatedAt = (Get-Date).ToString('o')

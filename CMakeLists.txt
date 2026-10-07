@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(QtSqliteDemo VERSION 0.2.0 LANGUAGES CXX)
+project(QtSqliteDemo VERSION 0.3.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -61,4 +61,11 @@ if(BUILD_TESTING)
     set_tests_properties(environment records_and_window equipment_persistence equipment_selection
         equipment_import scene_interaction complete_workflow equipment_application_startup
         application_startup PROPERTIES TIMEOUT 90)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(simulated_user_tests tests/simulated_user_tests.cpp)
+    target_link_libraries(simulated_user_tests PRIVATE equipment_window Qt6::Test)
+    add_test(NAME simulated_user_acceptance COMMAND simulated_user_tests -platform offscreen)
+    set_tests_properties(simulated_user_acceptance PROPERTIES TIMEOUT 45)
 endif()
