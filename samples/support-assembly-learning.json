@@ -1,0 +1,10 @@
+{
+  "equipmentId": "EQ-DEMO-102",
+  "equipmentName": "学习示例：双支座组件（虚构）",
+  "parts": [
+    {"id":"P-001","name":"安装板","material":"Q235","shape":"box","dimensions":[320,160,20],"position":[0,0,10]},
+    {"id":"P-002","name":"连接块","material":"45钢","shape":"box","dimensions":[35,90,80],"position":[-110,0,60]},
+    {"id":"P-003","name":"连接块","material":"45钢","shape":"box","dimensions":[35,90,80],"position":[110,0,60]},
+    {"id":"P-004","name":"连接轴","material":"45钢","shape":"cylinder","dimensions":[12,260],"position":[0,0,70]}
+  ]
+}

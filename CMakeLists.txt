@@ -1,40 +1,35 @@
 cmake_minimum_required(VERSION 3.21)
-project(QtSqliteDemo VERSION 0.1.0 LANGUAGES CXX)
-
+project(QtSqliteDemo VERSION 0.2.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Sql)
-
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Sql OpenGL OpenGLWidgets)
 add_library(record_store src/recordstore.cpp src/recordstore.h)
 target_include_directories(record_store PUBLIC src)
 target_link_libraries(record_store PUBLIC Qt6::Core Qt6::Sql)
-
 add_library(equipment_repository src/equipmentrepository.cpp src/equipmentrepository.h)
 target_include_directories(equipment_repository PUBLIC src)
 target_link_libraries(equipment_repository PUBLIC Qt6::Core Qt6::Sql)
-
+add_library(equipment_importer src/equipmentimporter.cpp src/equipmentimporter.h)
+target_link_libraries(equipment_importer PUBLIC equipment_repository)
+add_library(scene_view src/sceneview.cpp src/sceneview.h)
+target_link_libraries(scene_view PUBLIC equipment_repository Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets)
 add_library(equipment_window src/equipmentcontroller.cpp src/equipmentcontroller.h
     src/equipmentwindow.cpp src/equipmentwindow.h)
-target_link_libraries(equipment_window PUBLIC equipment_repository Qt6::Widgets)
-
+target_link_libraries(equipment_window PUBLIC equipment_importer scene_view Qt6::Widgets)
 add_library(record_window src/mainwindow.cpp src/mainwindow.h)
 target_link_libraries(record_window PUBLIC record_store Qt6::Widgets)
-
 qt_add_executable(qt_sqlite_demo src/main.cpp)
 target_link_libraries(qt_sqlite_demo PRIVATE record_window equipment_window)
-
 add_executable(environment_probe tools/environment_probe.cpp)
 target_link_libraries(environment_probe PRIVATE Qt6::Core Qt6::Sql)
-
 if(MINGW)
-    foreach(target record_store equipment_repository record_window equipment_window qt_sqlite_demo environment_probe)
+    foreach(target record_store equipment_repository equipment_importer scene_view record_window
+            equipment_window qt_sqlite_demo environment_probe)
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endforeach()
 endif()
-
 option(BUILD_TESTING "Build local verification tools" ON)
 if(BUILD_TESTING)
     enable_testing()
@@ -46,15 +41,24 @@ if(BUILD_TESTING)
     add_dependencies(equipment_tests qt_sqlite_demo)
     add_executable(equipment_window_tests tests/equipment_window_tests.cpp)
     target_link_libraries(equipment_window_tests PRIVATE equipment_window Qt6::Test)
+    add_executable(import_tests tests/import_tests.cpp)
+    target_link_libraries(import_tests PRIVATE equipment_importer)
+    add_executable(scene_tests tests/scene_tests.cpp)
+    target_link_libraries(scene_tests PRIVATE scene_view Qt6::Test)
+    add_executable(workflow_tests tests/workflow_tests.cpp)
+    target_link_libraries(workflow_tests PRIVATE equipment_window Qt6::Test)
     add_test(NAME environment COMMAND environment_probe)
     add_test(NAME records_and_window COMMAND demo_tests -platform offscreen)
     add_test(NAME equipment_persistence COMMAND equipment_tests)
     add_test(NAME equipment_selection COMMAND equipment_window_tests -platform offscreen)
+    add_test(NAME equipment_import COMMAND import_tests "${CMAKE_SOURCE_DIR}/samples")
+    add_test(NAME scene_interaction COMMAND scene_tests -platform offscreen)
+    add_test(NAME complete_workflow COMMAND workflow_tests -platform offscreen "${CMAKE_SOURCE_DIR}/samples")
     add_test(NAME equipment_application_startup COMMAND qt_sqlite_demo -platform offscreen
         --equipment-view --smoke-test "${CMAKE_BINARY_DIR}/equipment-startup.png")
     add_test(NAME application_startup COMMAND qt_sqlite_demo -platform offscreen
         --smoke-test "${CMAKE_BINARY_DIR}/startup.png")
-    set_tests_properties(environment records_and_window equipment_persistence application_startup
-        equipment_selection equipment_application_startup
-        PROPERTIES TIMEOUT 30)
+    set_tests_properties(environment records_and_window equipment_persistence equipment_selection
+        equipment_import scene_interaction complete_workflow equipment_application_startup
+        application_startup PROPERTIES TIMEOUT 90)
 endif()

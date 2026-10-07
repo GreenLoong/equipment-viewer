@@ -1,8 +1,18 @@
 #include "equipmentcontroller.h"
+#include "equipmentimporter.h"
 
 EquipmentController::EquipmentController(EquipmentRepository &repository)
     : repository_(repository)
 {
+}
+
+bool EquipmentController::availableEquipment(QList<Equipment> &equipment)
+{
+    error_.clear();
+    if (repository_.loadEquipment(equipment))
+        return true;
+    error_ = QStringLiteral("读取设备列表失败：%1").arg(repository_.lastError());
+    return false;
 }
 
 bool EquipmentController::loadEquipment(const QString &equipmentId)
@@ -30,10 +40,32 @@ bool EquipmentController::loadEquipment(const QString &equipmentId)
             .arg(equipmentId, repository_.lastError());
         return false;
     }
-    // 查询全部成功后才替换状态，失败时保留原设备、零件和选择。
+    // 全部查询成功后提交查看状态，避免失败时留下半个新设备。
     equipment_ = equipment;
     parts_ = parts;
     selectedPartId_.clear();
+    hiddenPartIds_.clear();
+    return true;
+}
+
+bool EquipmentController::importJson(const QByteArray &json)
+{
+    error_.clear();
+    Equipment equipment;
+    QList<Part> parts;
+    if (!EquipmentImporter::parse(json, equipment, parts, error_))
+        return false;
+    if (!repository_.saveEquipmentWithParts(equipment, parts)) {
+        error_ = QStringLiteral("保存导入设备 %1 失败：%2")
+            .arg(equipment.id, repository_.lastError());
+        return false;
+    }
+    if (!loadEquipment(equipment.id)) {
+        // 提交成功后读取失败不能声称保存失败，重试导入会触发重复ID。
+        error_ = QStringLiteral("设备 %1 已保存，但打开失败：%2。请稍后从设备列表打开。")
+            .arg(equipment.id, error_);
+        return false;
+    }
     return true;
 }
 
@@ -49,7 +81,6 @@ const Part *EquipmentController::findPart(const QString &partId) const
 bool EquipmentController::selectPart(const QString &partId)
 {
     error_.clear();
-    // 空 ID 表示清单当前没有选择，保持窗口与控制器的状态一致。
     if (partId.isEmpty()) {
         selectedPartId_.clear();
         return true;
@@ -65,4 +96,49 @@ bool EquipmentController::selectPart(const QString &partId)
 const Part *EquipmentController::selectedPart() const
 {
     return selectedPartId_.isEmpty() ? nullptr : findPart(selectedPartId_);
+}
+
+bool EquipmentController::setPartVisible(const QString &partId, bool visible)
+{
+    error_.clear();
+    if (!findPart(partId)) {
+        error_ = QStringLiteral("零件 %1 不在当前设备中。").arg(partId);
+        return false;
+    }
+    if (visible)
+        hiddenPartIds_.remove(partId);
+    else
+        hiddenPartIds_.insert(partId);
+    return true;
+}
+
+bool EquipmentController::hideSelected()
+{
+    if (!selectedPart()) {
+        error_ = QStringLiteral("请先选择一个零件。");
+        return false;
+    }
+    return setPartVisible(selectedPartId_, false);
+}
+
+bool EquipmentController::isolateSelected()
+{
+    error_.clear();
+    if (!selectedPart()) {
+        error_ = QStringLiteral("请先选择一个零件。");
+        return false;
+    }
+    // 隔离是显式查看操作，可恢复选中对象，但不改变其身份或属性。
+    hiddenPartIds_.clear();
+    for (const Part &part : parts_) {
+        if (part.id != selectedPartId_)
+            hiddenPartIds_.insert(part.id);
+    }
+    return true;
+}
+
+void EquipmentController::showAll()
+{
+    error_.clear();
+    hiddenPartIds_.clear();
 }

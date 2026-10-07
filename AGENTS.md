@@ -34,3 +34,9 @@
 - Git用于源码；scripts/checkpoint-data.py使用Python标准库SQLite在线backup创建独立一致性快照并执行quick_check，正常数据库不提交。备份保存在忽略的.recovery/databases，不能靠git恢复运行资料。
 - 恢复不得reset --hard、clean或删除数据库。优先修复分支/明确指定提交回退；保留未提交工作，重大或破坏性操作按具体范围确认。
 - 当前目标是连续Agent开发，禁止恢复后重新要求用户完成关键业务代码或每项人工验收；模拟反馈必须注明来源。
+
+## 当前交互版入口
+- 设备查看器入口为启动设备查看器.cmd或scripts/run.ps1 -EquipmentView；原记录入口保留。
+- CMake已接入Importer与SceneView，九项CTest覆盖导入、场景、完整业务及旧功能。实际验证以working-state和验证记录为准。
+- scripts/package.ps1只复制运行库、插件、虚构样例和指南，不打包正常数据库；先检查脚本再运行。
+- 当前代码加固及测试正在收尾，未经最终独立复查不得声明交付已通过。

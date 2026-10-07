@@ -1,4 +1,4 @@
-﻿param([string]$Database)
+﻿param([string]$Database, [switch]$EquipmentView)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -9,5 +9,9 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
 if (-not $Database) {
     $Database = Join-Path $projectRoot 'data\records.sqlite'
 }
-& $executable --database $Database
+if ($EquipmentView) {
+    & $executable --equipment-view --database $Database
+} else {
+    & $executable --database $Database
+}
 if ($LASTEXITCODE -ne 0) { throw "程序退出码：$LASTEXITCODE" }

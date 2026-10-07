@@ -1,0 +1,10 @@
+{
+  "equipmentId": "EQ-DEMO-101",
+  "equipmentName": "学习示例：小型输送机构（虚构）",
+  "parts": [
+    {"id":"P-001","name":"底座","material":"Q235","shape":"box","dimensions":[500,220,30],"position":[0,0,15]},
+    {"id":"P-002","name":"驱动电机","material":"铝合金","shape":"box","dimensions":[120,100,100],"position":[-130,0,80]},
+    {"id":"P-003","name":"传动轴","material":"45钢","shape":"cylinder","dimensions":[15,240],"position":[70,0,80]},
+    {"id":"P-004","name":"防护罩","material":"Q235","shape":"box","dimensions":[240,150,15],"position":[50,0,145]}
+  ]
+}

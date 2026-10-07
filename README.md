@@ -1,3 +1,39 @@
+# 设备模型查看器 0.2
+
+更新日期：2026-10-08。当前开发已接入 JSON 导入、多设备选择、只读属性、三维旋转缩放/拾取/高亮/显隐、搜索与隔离；本轮交付验证状态以 docs/working-state.md 和验证记录为准。下文保留此前记录示例及分步交付历史。
+
+## 当前运行入口
+
+双击根目录“启动设备查看器.cmd”，或在项目目录执行：
+
+```powershell
+.\scripts\run.ps1 -EquipmentView
+```
+
+仍使用项目 data/records.sqlite，保留已有设备及原记录资料；原“启动示例.cmd”继续打开记录窗口。设备窗口可切换数据库中已有设备，首次打开 EQ-001。JSON 两份虚构样例在 samples 中，通过窗口“导入设备 JSON”选择。
+
+完整操作、持久化和限制见 [使用指南](docs/user-guide.md)；接口与模块边界、注释和检查要求见 [工程规范](docs/engineering-standards.md)；恢复入口见 [当前工作状态](docs/working-state.md) 和角色 handoffs。
+
+## 检查与打包
+
+构建脚本 scripts/build.ps1 只使用本机依赖；当前 CTest 包含九项业务/回归/启动检查。每次变更先检查脚本再运行。
+
+```powershell
+.\scripts\build.ps1
+.\build\bin\scene_tests.exe -platform windows --snapshot-dir "$PWD\build\native-scene"
+.\scripts\package.ps1 -OutputRoot '用户指定的交付目录'
+```
+
+打包脚本生成独立目录和ZIP，仅含运行文件、插件、虚构样例、指南和manifest，不复制正常数据库或凭证。实际构建、原生OpenGL、打包依赖验证和独立审查结果记录在验证记录中，未执行的操作不能记为通过。
+
+数据库一致性快照工具 scripts/checkpoint-data.py 使用 Python 标准库 SQLite online backup，保存到忽略的 .recovery/databases 并检查 quick_check。恢复需先核对快照及当前数据库，不能直接覆盖正常资料。源码本地Git检查点不代替数据备份。
+
+## 模拟反馈
+
+搜索和隔离来自两条明确标注的模拟工艺工程师反馈，详见 [模拟反馈台账](docs/simulated-feedback.md)。真实用户体验仍待你操作；网络、MySQL、Redis为后续单独定义范围的扩展，本地版本不依赖服务器。
+
+## 前序交付历史
+
 # Qt + SQLite 第一个可运行示例
 
 适用范围：本机 Windows、Qt Widgets、C++17。本地记录的新增与读取已于 2026-10-07 通过用户人工验收；F01-1 设备资料保存与读取已于 2026-10-08 通过用户人工验收。
