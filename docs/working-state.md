@@ -1,6 +1,6 @@
 # 当前工作状态与中断恢复入口
 
-更新日期：2026-10-08。实际工程：D:/作业/简历/工作模拟。
+更新日期：2026-10-09。实际工程：D:/作业/简历/工作模拟。
 
 ## 当前目标与授权
 
@@ -14,7 +14,23 @@
 
 包位于原聊天outputs独立时间戳目录；0.4 manifest对应aef7499、dirty=false，已清Qt环境原生smoke及独审通过。证据见docs/releases/0.4.md和review handoff。真实用户仅验收环境/记录与F01-1，后续不伪造用户验收。
 
-## 当前进行0.6
+## 当前进行0.8（本节优先于后方保留历史）
+
+0.6已发布v0.6.0/30b5fcc；0.7已发布v0.7.0/3e3bb57，README已由旧0.2主体改为当前0.7并保留docs/history原文。0.7包outputs/equipment-viewer-0.7.0-20261009-001651，EXE80DD310C45247D04127A564FF003CE3B52BDBA110C49D93CD9EA70D05BD40086，manifest源码3e3/dirtytrue仅未来worker未提交；已独核，不含CAD代码/数据/秘密。主source0.7全14CTest16.50/nativeScene与Window退出0，实际FBO4，用户交互反馈已技术验收，非用户再次验收。
+
+0.8数据树.runtime/r08-cad-data（codex/r08-cad-data）：提交a15d091/4595142/e23c952/62f2c64，R08-01读库累计预算前置、R08-02真实引用网格双边近似包络、R08-03 SHA终换行已修/独审接受。真实轴承与电机协议→SQLite→重启完整互通；正常库未升级，合并与真实迁移先快照。
+
+0.8图形树.runtime/r08-graphics（codex/r08-graphics）：组合0.7和CAD数据；提交c600d19b94f238cc65f5ad48632a8692675e59c1，仅Scene、新tests/cad_scene_tests、target、handoff。孔背景/曲面/6件实际投影位置/拾取显隐/标尺及旧Scene/R07两平台通过、native4；独审进行。CAD UI树.runtime/r08-cad-ui：异步进程/STARTUPINFOEX出生Job归属2GiB/输出预算/取消owner生命周期/导入失败保护已落盘，初16CTest22.34过，Python3.14真转换及最后hash尚未完成。
+
+worker主tools/cad及Python tests已落盘，原10tests22.878过；独审R08-W01混合闭实体+开放面被静默丢弃，backend正在最小拒绝不支持几何并补真实回归，未给最终通过。不能把probe或数据/图形通过写为应用CAD已完成。CAD当前设计仅本地STEP，不将网格假作box上传旧API。
+
+私有CAD runtime已装.runtime/cad-runtime：官方签名PSF Python3.14.8 embed SHA A93ABE456AB01BD96D7A085B3CDB6566B3063F4241360D114142FBDB07F0A310；OCP novtk/proxy7.9.3.1 cp314 wheel SHA E5ED4CAF7C2982EBD8175B35358D2B5FA1A1CF7557CB7A94E87D6A5A0F1E697E，-I实际import通过。系统Python未改；模块site-packages子目录，源worker绝对路径通过EQUIPMENT_CAD_CONVERTER指定。对应cp312 runtime与已下载机械STEP在.runtime中保留，不丢工作。最终包CAD运行库及许可证root仍在准备，0.9/1.0尚未完成。
+
+正常服务最近观察：MySQL3310 PID70128，Redis桥6380 PID64612/session82732，API0.7 8765 PID64948/session23654。用户已启动WSL，不重启全局、不操作MySQL80。实际操作前重核，凭证/数据库/runtime不提交。CAD各树非Codex管理工作树，Git分支代码检查点与已落盘文件保留，禁止reset/clean/直接递归删除恢复。
+
+后续：worker修复独审→数据/gfx/UI各冻结并合入0.8→源与嵌入式完整CAD导入/显示/保存/重启/失败和旧数据迁移→0.8包/GitHub→0.9资源/恢复与1.0整合。source/scripts初执行须先读；各树build可独立、原生GUI焦点和ev_test/6380测试必须串行。
+
+## 0.6开发历史（已发布，保留证据）
 
 0.5已技术/模拟验收、独审、打包及推送。WSL已由用户启动，root明确Ubuntu-24.04 /bin/true退出0，没有重启全局。MySQL3310已按原标记恢复PID70128；Redis7.4.7项目setup已ready。0.6全部源码独审通过，pure38、真MySQL兼容1、真Redis TTL/坏值/LIST/6MiB原子删除/恢复1（backend和review分别亲自跑）、sim真实HTTP/MySQL/Redis/GUI两平台均accepted1/cleanup1。R06-01..03、backup kill抛错均关闭。当前打包与GitHub收尾，不提前记发布。
 
