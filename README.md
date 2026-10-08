@@ -1,6 +1,6 @@
 ## 当前逐版进度（优先于历史章节）
 
-0.3已发布至GitHub main及v0.3.0；0.4新增Qt HTTP团队共享库、Node API与独立MySQL，实际检查见docs/releases/0.4.md和角色handoff。按docs/release-plan-1.0.md逐版本推进，不将未验证未来功能直接改为1.0。
+0.3和0.4已发布至GitHub main及v0.3.0/v0.4.0；0.5新增工艺批注、草稿保护和并发修订冲突，正在实际双用户验收，尚未发布。实际状态见docs/working-state.md，0.4证据见docs/releases/0.4.md。按docs/release-plan-1.0.md逐版本推进。
 # 设备模型查看器 0.2
 
 更新日期：2026-10-08。当前开发已接入 JSON 导入、多设备选择、只读属性、三维旋转缩放/拾取/高亮/显隐、搜索与隔离；本轮交付验证状态以 docs/working-state.md 和验证记录为准。下文保留此前记录示例及分步交付历史。
@@ -19,7 +19,7 @@
 
 ## 检查与打包
 
-构建脚本 scripts/build.ps1 只使用本机依赖；当前 CTest 包含九项业务/回归/启动检查。每次变更先检查脚本再运行。
+构建脚本 scripts/build.ps1 只使用本机依赖；当前 CTest 包含12项业务、网络生命周期、批注故障和启动检查。真实MySQL/双用户测试单列，不包含在常规CTest中。每次变更先检查脚本再运行。
 
 ```powershell
 .\scripts\build.ps1

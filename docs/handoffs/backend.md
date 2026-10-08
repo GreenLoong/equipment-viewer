@@ -62,3 +62,45 @@
 - repository.test新增end拒绝且队列仍有两个socket的受控回归，destroy实际移除队列成员；close即时完成且两个socket均销毁，不等看门狗。纯npm test实际14/14通过，报告0.901秒；其中新回归0.55ms。
 - 主管恢复后只读确认127.0.0.1:3310/PID63920已监听，实际运行guarded ev_test全量integration 1/1通过（报告4.041秒）：原0.4精确身份/并发/触发器回滚/API重建读取/边界以及100ms锁超时/实际连接销毁/受控断连恢复/持锁close均通过，测试自建表已收尾。此为本轮实际检查，非复用旧结果。
 - 修复文件SHA256：repository=9F1254140C8F1A9692D92EDDDFAB02982F81DA3AA13B767A4C8A68EFE6267BA2；repository.test=69DD81B8D1FEDC95ECBD11EF03B7ED0CAC05FE445234FF66BE96A7DC0830D2E7。git diff --check限定两文件与本交接通过。待独立复审，不冒充审查通过。未改Qt/其他api文件，未写0.5。
+
+## 0.5工艺批注实施检查点
+
+主管确认0.4已独立验收并提交/推送aef7499、tag v0.4.0后明确启动0.5。已读新增冻结契约；本节覆盖此前“未写0.5”的旧状态。本Agent不启用Redis、不编辑geometry、不操作主API/session43076、不直接迁移ev_shared。
+
+- 新增api/src/annotations.mjs：UUID规范小写、精确equipment/可空partId、text2000/author与editor80 UTF-16单元、配对Unicode、expectedRevision正整数上限、严格scope查询与原始业务字段SHA256。
+- repository新增annotations增量DDL/字段/索引/本库设备与设备内零件联合FK校验；旧结构/schema1先验证，新增DDL隐式提交后验证，最后标记2。不drop升级；表已创建但marker1可重入核对后继续。原事务deadline/取消/rollback失败destroy/pool.close拒绝销毁/FK跨schema保护保留。
+- POST幂等原始指纹original_payload_hash永久保存，PUT不改；同UUID同原始业务字段返回200当前DTO，不同409/IDEMPOTENCY_CONFLICT。并发同UUID由唯一键+锁定读解决，无重复；修改后重发原POST仍200同ID/revision和现存文本，不改回原稿。
+- PUT单条id+revision CAS，成功revision+1/updatedBy/updatedAt，冲突409/REVISION_CONFLICT提示刷新后显式提交；author/createdAt/关联身份保持。DTO从UNIX_TIMESTAMP epoch转UTC ISO。GET按updated_at DESC/id ASC最近200，geometry不改变。
+- server/package/lock版本0.5.0；依赖仍固定mysql2 3.24.5，无新第三方依赖。新增annotations纯测试3项，旧14项保留。
+- api/tools/backup-mysql.mjs先落盘并主管完整读取后由主管真实执行成功，副本.recovery/sql/2026-10-08T00-37-09-996Z-40aa75a9；manifest restoreVerified=false。此为主管执行证据，本Agent没有执行共享库备份/迁移。
+- backup限定本机ev_shared3310/ev_app+marker/实际datadir/账号/库/InnoDB；mysqldump首参数ASCII本机随机ini传密码，stdout binary pipeline+single-transaction/no-tablespaces/GTID关闭/no锁/no DROP，失败partial保留，成功SHA256/manifest。自查补强仅删除本次成功创建的ini，避免wx碰撞时删除别人文件；若临时ini删除失败给安全路径警示，不输出内容。该最后补强仅node --check，主管后续运行前应重读变化。
+- 新增api/README.md迁移/备份/重入/运行导读，使用technical-documentation技能；明确DDL自动提交、schema2旧程序不能直接回退、dump不等于恢复实测、客户端DTO分离与后端/GUI验收边界。
+
+本轮实际验证：
+
+- npm test 17/17通过，最新报告0.902秒，保留旧14项并补批注校验3项。
+- EV_TEST_CONFIG_FILE=api/runtime/test.local.json运行真实integration 1/1，两次通过，最新报告4.615秒。ev_test严格空库/3310/ev_app guard，创建真实0.4夹具和旧geometry，再验证无损迁移与schema2；模拟DDL已建但marker1重入不丢geometry/批注；同UUID并发200+201/原POST→PUT→原POST200当前修订；CAS并发200+409/显式rev2重提交；精确同名设备/零件关联与数据库FK；作者/UTC epoch；重建读取；最近200稳定排序。原0.4全部错误/边界/事务/锁超时/断连/close回归继续通过。
+- finally先DROP本次annotations，再part/equipment/schema_version；已通知模拟用户负责人收尾次序及测试互斥，目前ev_test已释放。测试既不操作ev_shared，也不停止MySQL实例/主API。
+
+下一步：主管统一新主API启动/共享库迁移（已有dump）、Qt草稿集成、专职模拟双用户和独立review；本Agent可处理后端审查意见。未独立审查/未真实用户验收/未发布0.5。
+
+## 0.5备份凭证临时文件所有权修复
+
+- 首轮独立审查接受批注/CAS/原始指纹/迁移，指出backup的writeFile(wx)可能已创建文件却在写入ENOSPC时失败，旧privateFileCreated未置true会遗漏自己的秘密ini。
+- tools/backup-mysql.mjs新增preparePrivateOptionFile：open('wx',0600)成功立即owned=true，再handle.writeFile/close；任何写入失败都finally关闭并unlink自己拥有的文件。open EEXIST未取得所有权，绝不unlink已有文件。正常返回幂等cleanup，dump结束finally执行；外层连接destroy用嵌套finally保证不跳过文件cleanup。收尾失败仅给唯一文件路径提示，不输出内容/错误对象/密码。
+- 在既有setup-config.test.mjs增加3项受控FS替身回归：open成功+写ENOSPC失败close/unlink、EEXIST不unlink、正常先close再cleanup unlink且重复不再删。没有写真实凭证文件或制造真实磁盘耗尽。
+- 实际npm test 20/20通过，报告0.819秒；原17项全部保留，deadline/close/FK测试仍通过。backup node --check通过；本修复不改变SQL/DDL/事务实现，本轮未重复真实MySQL测试、未抢占ev_test、未运行ev_shared备份/迁移或主API。
+- 仅修改backup工具、该纯测试与本交接，待独立复核所有权与收尾。主管后续执行backup前应读取最终工具内容。
+
+## 0.6仅环境准备（0.5发布前不启用缓存）
+
+主管明确分配Redis环境工具准备，要求先落盘供完整检查，不运行setup或启动服务、不改API/cache/version/service/test、不碰MySQL/主API/ev_test。恢复后已重读AGENTS/规范v1.1/working-state及本交接；只读实际Windows监听为8765/PID16200、3310/PID63920，6380未监听；未操作这些进程。已读docs/cache-plan-0.6.md，官方7.4.7编译结果属于主管证据，非本Agent再次编译。
+
+- api/tools/setup-redis.mjs：独立redis.local.json持久purpose/端口/目录/version与随机64hex密码；缺失时排他open成功即拥有，写失败close/unlink，旧配置不同拒绝。通过隐藏wsl.exe/root/python3执行redis-stdio.py --setup，秘密仅stdin；安全状态JSON最多32KiB，stderr不转发，30秒子进程预算。默认已注册发行版名称Ubuntu，可首次设置EV_REDIS_WSL_DISTRO（需主管核实真实注册名）；不改全局WSL网络配置、不启用API缓存。
+- api/tools/redis-stdio.py：Linux专属/opt/equipment-viewer-redis/runtime-6380、purpose.json、redis.local.conf(600)/pid/log，compiled7.4.7固定binary；非空无标记/未知端口/未知活PID拒绝。Redis配置requirepass、127.0.0.1:6380、64MiB/allkeys-lru、save空/appendonly no。配置和实例身份核实后才AUTH/INFO/CONFIG，检查/proc PID exe及监听socket inode属于PID，stop只对核实实例SHUTDOWN NOSAVE，不kill未知PID。
+- stdio原始桥双向各64KiB队列，selectors按可读/可写事件与背压处理；默认30秒空闲、EOF后1秒排空预算，最终关闭socket/selector。正常bridge入口也先核实专属PID拥有监听socket，stdout只原始RESP，错误走不含内容的stderr；密码不进argv/log。
+- api/tools/redis-bridge.mjs：Windows前台127.0.0.1:6380，每TCP一个windowsHide WSL stdio子进程，最多8连接，pipe自动背压；stderr丢弃。断开/错误/空闲/close先清socket/pipe，EOF后1500ms未退出只kill本次wsl.exe，另500ms未确认返回明确close失败，不伪造确认。未知占用端口EADDRINUSE直接失败，不替换原监听。必须由主管managed foreground session启动，没有Start-Process后台绕过。
+- api/test/redis-bridge.test.mjs：独立node --test运行，不加入当前0.5 package脚本。使用fake ChildProcess与临时loopback端口，无真实WSL/Redis/数据库；4/4通过（报告0.348秒）。验证秘密仅stdin/参数无密码、RESP字节往返与stderr隔离、断开/空闲挂子进程终止、未知占用端口保留、连接数上限与2MiB输入背压缓冲<=256KiB、close资源归零。
+- Node两工具node --check通过；已找到本机Python3.12并用ast.parse检查redis-stdio.py语法，通过且未生成__pycache__。Linux/proc身份/真实Redis启动认证/真实WSL桥/性能尚未运行，本记录不等于真实环境验收或独立审查。
+
+下一步：主管/独立review完整读取三工具和资源测试；核实WSL发行版名后主管执行setup，必要时前台启动bridge；0.5正式发布后再定义实际0.6缓存接口与配置并实施。当前service/test、API源码、版本保持0.5，0.6工具/测试应排除0.5发布提交范围。

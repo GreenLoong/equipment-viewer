@@ -1,4 +1,4 @@
-# 设备模型查看器 0.2 技术导读
+# 设备模型查看器技术导读
 
 2026-10-08，依据实际实现。实际工程：D:/作业/简历/工作模拟。用户操作见使用说明，编码与协作要求见工程规范。
 
@@ -53,3 +53,15 @@ GPU资源在有效上下文中清理；清理先断开上下文销毁连接，�
 ## 后续修改入口
 
 变更JSON规则看Importer；变更资料保存看Repository；变更选择/显隐语义看Controller；变更界面、搜索和属性看Window；变更几何/相机/拾取看Scene。接口或行为调整同步规范、指南与验证，不把旧检查结果沿用到新代码。
+
+## HTTP共享与批注链路（0.4/0.5）
+
+EquipmentWindow打开拥有独立ApiClient的CollaborationDialog。Qt Network异步传输；每个回复在完成、失败或取消后回收。ApiClient的generation拦截取消前排队成功结果；Dialog的operation拦截旧操作回调，防止新请求的busy状态被旧请求清除。
+
+发布：Controller当前完整设备→JSON→Bearer HTTP→Node严格校验→MySQL事务保存设备与全部零件。下载：HTTP详情→Importer完整验证→本地SQLite事务保存→Controller重新加载。几何不可变、重复ID拒绝覆盖，本地失败保留资料。
+
+批注：精确equipmentId+partId/null查询→列表当前DTO和只读保存内容→独立草稿→显式POST/PUT。POST使用UUID与原始payload指纹，同一原请求重试返回当前存续DTO；PUT带expectedRevision，单条CAS更新，旧版本409并保留草稿。刷新只更新保存DTO和修订，不自动提交。作者显示名不是独立账号认证；DTO时间为UTC。
+
+修改失败保护看src/collaborationdialog.cpp；网络生命周期看src/apiclient.cpp；HTTP鉴权/大小/截止看api/src/server.mjs；MySQL事务/结构迁移看api/src/repository.mjs；批注字段与指纹看api/src/annotations.mjs。客户端不持有MySQL密码，配置不上传。
+
+MySQL迁移从验证通过的v1增建annotations，再验证结构并更新schema marker；DDL可能隐式提交，中断后重入，不靠删除数据升级。执行前保存独立一致性备份。源代码回退不能撤销数据迁移，恢复必须单独验证。

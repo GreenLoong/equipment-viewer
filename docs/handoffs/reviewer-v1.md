@@ -160,3 +160,131 @@ Qt其余路径初读：manager归Client、timer归reply、finished先remove pend
 本轮对应SHA256：ApiClient cpp=EE2F7FA1224606F06916120977C2F24D217A4E5D8DF32E7CF3D89D4943049E58，h=49B5B4C8D1B6F8D86E4DAC3AE78D16632660437A75AD579ACF870260466DFFDE；api_client_tests源=7F0AAF42235AB206092809E44CE509E819E7F3F5C6903C4D63EB66B2CF92EB56，实际运行EXE=C60B53846CAA7414126D967E31CF6DAFF8FCFB50C80A4946699C5BB53142BF92；repository=9F1254140C8F1A9692D92EDDDFAB02982F81DA3AA13B767A4C8A68EFE6267BA2；repository.test=69DD81B8D1FEDC95ECBD11EF03B7ED0CAC05FE445234FF66BE96A7DC0830D2E7；server未变=F5BC6FD4C39B721D21B91766FA9D21AC0C33C6AD6D738E8EF6D669753F5441D1。
 
 结论：原R04-01至06及排队交付取消问题全部独立复核关闭，已审代码范围无待关闭阻断项。0.4完整发布结论仍等待主管最新全量CTest与模拟用户双客户端/Modal实际验证、文档与包来源核对；此结论不替代原生共享交互或真实用户验收，也不作ASan覆盖/零资源泄露声明。本角色继续专职后续审查。
+
+## 0.4 最终源码检查点结论
+
+主管提供全量回归与模拟用户完成通知后，只读核对最终暂存范围、11项LastTest.log、两份shared-user实际日志、共享Qt/Node harness完整源码、0.4反馈/发布记录/指南/契约/恢复状态和关键哈希。基线HEAD为03c0c1a（0.3）；当前0.4尚待主管提交/打包，不提前审0.5。
+
+结论：0.4最终源码范围独立审查通过，没有阻断源码检查点的未关闭项，可按持续授权提交0.4并进入打包/远端同步。原R04-01至06及排队取消已关闭，源文件哈希保持对应复核范围；真实用户体验仍待用户实际操作。最终包尚未提供，不把源码通过写成二进制/依赖隔离通过。
+
+最终只读核对事实：
+
+- 最新LastTest.log实际列11项且每项Test Passed，包括api_client_lifecycle；12.08秒为主管运行报告，本角色没有再次全量运行。
+- build/shared-user-0.4-offscreen.log与windows.log均实际包含全部8情境字段为1、SHARED_USER acceptance=1、SHARED_HARNESS accepted=1、cleanup=1。模拟用户亲自执行并查看8张Windows截图；本角色独立查看发布成功、错误令牌、真实pending关闭前、离线新窗四张关键图，状态与日志一致，令牌遮蔽、中文可读。截图不当作socket/SQL释放证据。
+- Qt测试两个真实EquipmentWindow各用独立临时SQLite，通过鼠标/键盘操作共享库；精确数据断言按设备/零件ID核对字段、位置和形状不适用值，没有将SQLite ORDER BY id误当JSON数组顺序。原失败与修正过程按模拟反馈保留，未为测试改业务。
+- Node harness显式EV_TEST_CONFIG_FILE，guard ev_test/3310/ev_app/本机及空库通过后才标记ownTables；本次API和挂起HTTP端口都是ephemeral。app.close文件握手、真实socket close及最终MySQL两设备/四零件与空库清理断言，对应实际日志。只drop本次part/equipment/schema_version，不操作ev_shared/原MySQL80/正常8765。递归临时目录删除前校验绝对父目录为系统tmp、basename为本次equipment-shared-user前缀。
+- client.local.json实际只输出键名称host/port/token、hasMysql=false，没有输出秘密；Git check-ignore确认client/service/test本机配置、node_modules、.runtime忽略。30项暂存文件只含0.4业务源码、固定package/lock、测试/helper、契约/指南/交接/状态，没有数据库、生成物或本机凭证。git diff --check无错误。
+- 源码与契约保持0.4，只实现不可变共享设备；0.5批注/冲突和0.6Redis仍是后续范围，没有提前实现或宣称通过。
+
+最终新增范围SHA256：CMake=B9330BDDA256B36FF5694421D724194304B5AB843192CEE2BA658591A537FF9F；setup-mysql=33FB2051B57511EFB401C6D1BF3898CA0B405052A0E7CF71EC4220FC3E3E0FD4；shared_user_tests=2D89991593018A4ABE614DC5513D0E4A21A883E434D4AA8FCE7E551CB42C11F0；run_shared_user=931F33D93BE1013499FC3FC28A91415C6D2995A7CA3466FE5C327FE273C7A27D；api-contract=934BFD5CA8B7BB7E92EDC425BA7C88F152913BED5005765FC01DDFF5AA73997E；package=B9ACBB3DC8BE3556195101D9786EEBA3093BE8B33B1B72755380BB6790F733EE；lock=D9AAA06C9C82C20DB80C0597629D9B2D3F4073120BEC86D9F5E4C21FFEF8F848。ApiClient/Window/Dialog/main/repository/server保持前述接受哈希。
+
+两项旧文案已通知主管订正，非源码行为阻断：user-guide仍写网络服务不属于当前版本，应与0.4共享章节一致；README版本管理仍写尚未推送，应反映0.3已同步及0.4实际后续状态。本角色不改公共文档；本交接新段尚需主管重新暂存。
+
+下一步：主管生成0.4包、验证依赖隔离启动、核对manifest/EXE/hash/敏感文件和提交一致后提供包meta，本角色再独立只读复核包；当前不提前作包通过结论。
+
+## 0.4 最终包复核与交付范围
+
+已只读核对C:/Users/23871/Documents/Codex/2026-10-07/new-chat/outputs/equipment-viewer-0.4.0-20261008-082917目录及同名ZIP。manifest为version0.4.0、sourceCommit=aef7499d05f0f9db4535fd33fdb4718b84487d1d、sourceHasUncommittedChanges=false、databaseIncluded=false。目录EXE、ZIP内实际EXE流及build/bin EXE的SHA256均为720CDF8993BFEB36ACCE8772094FC35A3379CD291922FBBF2FF3979C58D62093；aef7499的CMake实际0.4.0。
+
+目录/ZIP包含启动入口、指南、两份虚构样例、QtNetwork/OpenGL/Widgets/Sql与MinGW运行库、qwindows/qsqlite插件；扫描无数据库、key/pem、local.json或.env。0.4图像依据为此前独立查看的原生共享关键图及模拟用户八图记录；包清Qt PATH/plugin变量后的native smoke退出0为主管实际执行，本角色没有再次启动包。
+
+结论：0.4源码与对应桌面包独立复核通过，交付为本机Windows桌面、本地SQLite、HTTP团队共享设备/独立MySQL能力；双客户端证据为同一进程两个真实窗口与各自本地库，不扩大为跨机器/独立桌面进程验收。真实用户未验收；0.5批注与Redis不属于此包。0.4包无需重复制作，后续按0.5范围推进。
+
+## 0.5 后端首轮独立审查（Qt尚未完成）
+
+已读新增0.5冻结契约、annotations/repository/server/schema及完整真实integration增量、纯测试/0.4夹具、backup工具及api README。未预判正在实现的Qt草稿UI，未争用ev_test，未操作ev_shared迁移或主API。相对0.4实现保护已复查，17项纯检查由本角色实际运行通过（928.1483ms），backup-mysql语法检查退出0。真实ev_test1/1为backend报告，本角色读取其守卫与断言，不冒充亲自运行。
+
+目前批注业务源码未发现阻断项：UUID规范小写；精确scope和UTF-16/Unicode边界；创建原始指纹只INSERT、不随PUT修改；相同原UUID/原payload重试在修改后返回当前存续DTO。并发INSERT唯一键失败后FOR UPDATE越过RR旧快照，CAS为单条id+revision UPDATE，再锁定读DTO，事务提交前取结果，作者/关联/创建时间保持。DTO从MySQL epoch转UTC ISO；本库设备FK与设备内零件联合FK兼容校验明确。先验证v1再增建/验证annotations，最后marker1→2；DDL隐式提交及中断重入不drop行为记录真实测试。原截止、迟到获取、取消、回滚失败destroy、end拒绝收尾保持；真实测试收尾先annotations后part/equipment/schema_version。
+
+备份独立核对：首次副本.recovery/sql/2026-10-08T00-37-09-996Z-40aa75a9，3780字节；SQL实际SHA256 E03D77E23C363F01CDCA802C313F431E93FFF464B91D99546755288DFB5DFE3E与manifest一致，restoreVerified=false。未执行恢复，不声明恢复验证。工具本机ev_shared/3310/ev_app/marker/@@datadir/账号/InnoDB守卫、无密码命令行、single-transaction和partial处理合理；必须保持暂停结构变化的运行约定。
+
+新增需修R05-01已立即通知主管：backup-mysql.mjs:51-53在await writeFile(flag wx)完整成功后才设置privateFileCreated。如果独占open已经成功但后续写入ENOSPC/I/O失败，本次新建文件可能含部分或完整密码，而flag仍false，finally跳过unlink也不提示残留。本角色只读本机Node24 internal/fs/promises源码确认writeFile依次open→writeFileHandle→close，不替调用方unlink。应open wx成功即记录本次拥有，再FileHandle.writeFile/close；finally只unlink拥有文件。受控替身验证open成功/write失败仍清理、EEXIST不删既有文件、正常路径关闭并清理；不制造真实磁盘耗尽。
+
+契约文案建议已通知：POST“返回200原记录”改明确“当前存续DTO，后续PUT后原POST重试不回退内容”；现README/真实测试已明确，避免未来Qt把重试理解为返回冻结原文本。
+
+本轮哈希：annotations=A04788F1111BC67263F37B6E01EE43F4EF996A653F8B393ADF73A3460FDE2D6B；repository=27AEC0CDC7A8D154D3E17CA91C187C3AEE006D52CE00A29CC6D1E335C75E7769；server=F86225EA6C8EE0BFD319EF7A184AD17BF10121A005199BA04051067458E2ACB2；backup=3678E6DC33210E2DAF74CF562C8D5D15F032CDE2E7020EA76C2A7D640D4CFE3A；integration.test=CCB64AF3BDC2E2618FFC003CE5C5A14C026DBB565CAAE7345F743E5E8A384D3B；annotations.test=41A4730419558C5FFFD1FCB0BB500939D7223BD875EB2BFA6BE3FE3058CA1EBF。
+
+下一步：R05-01修正复查后给后端范围结论；主管Qt草稿/CAS/取消和真实双用户完成后再关联审0.5。不把17项pure或0.4包通过写为0.5完整发布通过。
+
+## 0.5 R05-01关闭与Qt首轮待修事项
+
+已完整重读preparePrivateOptionFile、backup main外层finally和新增三项FS替身测试。open wx成功后立即owned，写失败通过cleanup关闭并删除自己文件；EEXIST未取得拥有权不删除，正常返回幂等cleanup；connection.destroy用嵌套finally不跳过文件收尾。R05-01接受修正并关闭。
+
+审查者独立实际运行20项pure全部通过（891.8549ms）。另用纯FS替身检查close/unlink异常，不写真实文件或凭证：close持续拒绝会尝试两次close、一次unlink，并一次安全提示；成功准备后的unlink拒绝会尝试一次并一次安全提示。系统删除自身失败仍需主管按唯一文件路径手工核实，未宣称所有I/O故障下能保证文件消失；不打印内容或错误对象。backup新SHA256=1F88CE37F69F9A73A4B314AFD6DB7943F1B3C9A1339E91B4F26368196FC02BE3，setup-config.test=696EA588B81B1D98B68BDBC3397314C4A51829960972791C4982615AD82A9E61。未重复dump或ev_test真实运行。
+
+主管通知Qt首次编译成功后，本角色完整只读CollaborationDialog头/实现及Window创建/销毁关系。以下事项已立即通知主管，待修改与实际回归；没有自行改业务：
+
+| 编号 | 位置与触发 | 影响与修正/复验 |
+| --- | --- | --- |
+| R05-02 | Dialog:154-155仍无条件reject/finished取消，Window:74仍WA_DeleteOnClose；有未保存草稿或保存pending时Escape/关闭 | draft/nonce/currentNote随Dialog销毁，未经显式放弃丢失文本。按取消保留约定，可先取消等待并保留Dialog/草稿，提示先保存/放弃；覆盖Escape、按钮、标题X/close，不能只保护一种关闭入口 |
+| R05-03 | loadPartScope:303-318同eq刷新时若原loadedPartId不在返回parts，自动选择整设备并更新loadedPartId；dirty新草稿文本仍保留 | 异常/不完整但可解析的HTTP设备DTO会让下一POST静默改为设备级批注。dirty时原part缺失应报错并保留原scope/cache，禁止自动降级；受控HTTP制造同eq缺原part验证，不改正常geometry |
+| R05-04 | saveNote:448-455只校验equipmentId及DTO形状；refreshNotes:341-345未检查限定partId与实际返回note partId | 同eq其它批注DTO/其它零件列表可能被接纳并用于后续修改。捕获本次POST requestId或PUT note.id和目标partId，严格匹配响应；限定part查询结果必须匹配该part，整设备查询仍允许全部part。错误保持草稿、当前DTO与scope |
+| R05-05（主管已计划校准） | refreshNotes:347-364当前note不在recent200且dirty，保留旧currentNote，但仍提示“最新保存版本已刷新” | 未取得该note最新版本却给出已刷新的承诺；应明确未找到/未取最新、保留旧metadata/草稿且不自动覆盖。用recent200不含当前ID场景验证 |
+
+其余初读：catalog/part/notes请求失败未清dirty；catalog dirty且缺当前eq会在改列表前拒绝。scope切换脏草稿恢复旧精确ID，New/其他note切换不自动覆盖脏稿；QPlainTextEdit与PlainText标签避免富文本执行。现有回调仅捕获this/ID/text值，临时parts仅同步使用，不保存Part借用。Client仍由Dialog拥有，ApiClient哈希保持0.4已复核的EE2F7FA1224606F06916120977C2F24D217A4E5D8DF32E7CF3D89D4943049E58，原generation取消不回归。POST同语义payload保持UUID，修改语义才换UUID；返回更高修订/不同text保留草稿，PUT使用currentNote revision不盲目重发。显示名是展示标签，时间从UTC DTO解析后转本地展示，未把它当认证身份。
+
+Qt初轮SHA256：Dialog cpp=2AB1360F5F0190A846D2BBE3AECAE6BBF5A188CDCB06D12B24B6C843CB875E3A，h=1C17737B319E24D198A229784BE8BDE11897E6050B746BA6D72072188F9396C6；CMake=17564F201A2830F674C6062F40F747CBF5DEFAC9FA0F2751FEC02E8330A7D36F；main=480DAF0EFD2655C00F4DD6DDAE8F1384B0E7E2D13C70C69C17B00A986259D081。
+
+下一步：等R05-02至05修正/必要控件回归与模拟双用户实际验证，独立复查关联失败保护；后端业务源码当前无未关闭项，0.5整体仍未通过/发布。
+
+## 0.5 Qt四项修正静态复核接受（运行复验待完成）
+
+主管通知最小修正增量编译成功后，独立重读Dialog h/cpp的全部修正与请求调用、Window拥有关系、main退出入口；未改业务或构建，未用未完成的GUI测试结果作通过依据。
+
+- R05-02：公开override reject在dirty时先递增operation、cancelAll、恢复非busy并保留窗口/文本/nonce/currentNote，提示保存或放弃；closeEvent对dirty调用该路径并ignore，阻止WA_DeleteOnClose。干净窗口沿用QDialog关闭和已审ApiClient取消。Escape、关闭按钮及标题close路径均有源码入口，实际控件复验仍待。
+- 新取消/新请求竞态：所有共享与批注HTTP都通过唯一request封装递增operation，wrapper仅当前operation调用业务callback；dirty关闭在取消前递增，使已经排队的旧取消callback不再setBusy(false)或更新旧数据。串行链式catalog→parts→notes在上一callback内创建下一operation，未看到跨局部引用保存；ApiClient QObject上下文与generation机制保持0.4哈希不变。
+- R05-03：dirty、同eq且原loadedPartId非空时，先检查返回parts包含精确ID；缺失在替换scope/cache前返回错误，不自动降整设备。合法刷新仍保留原part选择/草稿。
+- R05-04：限定part查询对每个DTO检查返回partId，整设备scope可读全部；保存前以值捕获本次POST nonce或PUT currentNote.id及原partId/null，返回DTO需严格匹配后才展示/清nonce。错误不调用displayNote、不清dirty/nonce或旧metadata。
+- R05-05：recent200未含当前ID且dirty时明确“未取得新修订”，保留旧currentNote/草稿；不再宣称目标最新保存版本已刷新。
+
+父窗口适用范围：当前普通UI由WindowModal阻父操作，没有额外Exit/quit动作绕过Dialog；main.app.exit只在显式smoke入口。此次不要求为程序式owner析构或进程终止实现无限内存草稿保留。若以后新增正常“退出”菜单或程序式父close，应在优雅退出协调中先让子Dialog尝试reject，若其因dirty仍可见则拒绝父close；强制终止后的保留需要另行持久草稿范围，不作当前完成声明。
+
+已给主管有效受控HTTP回归建议，尚未由本角色执行：
+
+1. dirty实际Escape与close保留，显式放弃后可关闭；保存pending关闭也保留原文本/nonce。
+2. 取消旧pending立即开始新pending，在旧queued callback送达后仍为新请求busy；不能只等旧callback全部排空再测。
+3. 同eq有效DTO缺原part，刷新后原P scope与dirty文本不变，后续显式POST仍绑定P。
+4. 错UUID/part保存DTO及限定查询错part列表拒绝，旧metadata/草稿不变。
+5. recent200不含选中note时提示未取得新修订，旧revision不改、草稿保留。
+
+修正范围SHA256：Dialog cpp=4E0FC49D62AADC3AB61E3310F90F7E32D27530BE69653F57A0B39CD6E31E5747，h=AB3EC5F78C1340BAA668ECBD64656F81E74243943B1D60E101F3E871262CC60D；ApiClient仍EE2F7FA1224606F06916120977C2F24D217A4E5D8DF32E7CF3D89D4943049E58。限定git diff --check无错误。
+
+结论：R05-02至05的源码修正复核接受，新增operation防护合理，未发现新的阻断源码问题。待实际行为与模拟双用户回归后再关闭运行复验并给0.5整体结论，未提前宣称发布。
+
+## 0.5 独立受控HTTP故障测试交付（待主管运行）
+
+主管明确授权本角色新增唯一测试文件tests/reviewer_annotation_faults.cpp；已落盘，未改业务或CMake。文件有独立QApplication/main，建议目标reviewer_annotation_faults，链接equipment_window与Qt6::Test，Network由equipment_window传递；不使用自定义Q_OBJECT，无额外moc资源。建议运行build/bin/reviewer_annotation_faults.exe -platform offscreen，正常结束打印REVIEW_ANNOTATION_FAULTS accepted=1 controlledHttp=1 realMysql=0；当前尚未运行，不能将此预期输出记为通过。
+
+测试用真正的QTcpServer/Socket绑定loopback端口0，累积完整HTTP头及Content-Length body后才返回受控DTO；模板为合法设备/零件/批注，仅在指定故障下返回缺part、错误UUID/part或200条不含当前目标。临时SQLite初始化EquipmentWindow，公开控件对象名发现Dialog及编辑器；鼠标/键盘/close事件、公开Dialog reject和控件click触发操作，不直接调用ApiClient/业务callback造假，不接ev_test、8765或正常SQLite。
+
+已实施断言：
+
+- dirty Escape、关闭按钮、真实closeEvent均保留窗口/草稿，父选择保持；显式放弃后允许窗口回收。
+- 同eq detail突然缺当前P时scope和草稿不变，后续POST仍带P，不降设备级。
+- POST/PUT分别错UUID与part DTO拒绝，草稿/旧metadata/原revision保持；相同POST payload连续受拒时requestId仍相同。
+- 限定P的GET notes返回Q批注拒绝，并保留先前P条目/草稿。
+- 返回200条合法P批注而不含当前ID，提示未取得新修订，草稿/保存内容/旧revision保持。
+- 真正旧reply finished排队交付后取消，公开reject与控件click在同一事件栈中立即开启新pending；旧排队事件经过后新请求仍busy。对端实际持有两个请求并只释放最新socket，不用sleep猜网络结果或直接执行业务callback。
+
+实际仅执行MinGW GCC13.1 -fsyntax-only -Wall/-Wextra/-Wpedantic：补齐与Qt目标一致的QT_WIDGETS_LIB/GUI/Network/Core/Sql/Test宏后退出0，无诊断。较早手工探针未配置MinGW运行PATH、随后未带QtWidgets宏，分别退出1；补齐编译环境后通过，未因此改业务。运行级验证仍由主管统一接入/编译/执行，本角色负责修自己的测试或反馈真正业务失败。
+
+测试源SHA256=F86F0E4CBD7F8BA4D5DF84A3D7A0A06FC59694BE4E853CBFC0C3356231F7D4B1。主管已收到依赖与运行入口；本角色将据实际结果更新，不空等大场景或假记green。
+
+## 0.5 最终源码独立结论与运行证据
+
+额度恢复后先重读交接/实际Git/当前协议与哈希。主管已构建并运行独立故障测试通过；审查者又亲自运行reviewer_annotation_faults -platform offscreen，六组字段全部1、最终accepted=1 controlledHttp=1 realMysql=0、退出0。早期恢复运行EXE为0DF677905263ED5F85A1451CF6FD2528A165E945FD3A4708AE1DD1C38BF73A48；随后主管完整重构建生成2B83FDF34D6FA8C373A91AA5100B6D5E724C0B1E14B61B37DAC4348E525B1098，本角色因当前二进制变化再运行该最新EXE亦退出0。测试源F86F0E4CBD7F8BA4D5DF84A3D7A0A06FC59694BE4E853CBFC0C3356231F7D4B1保持不变。R05-02至05与取消后立即新请求busy的运行复验完成，全部审查项关闭。
+
+最终源码结论：0.5独立审查通过，没有阻断源码检查点/tag的未关闭项。允许主管按持续授权提交/同步0.5并进入版本打包检查。0.5为不可变几何上的工艺批注、原payload幂等及CAS修订/草稿保护；不把0.6Redis工具准备或0.9资源计划纳入本版完成范围。真实用户验收仍待用户操作，0.5最终包尚未审查。
+
+本角色实际只读核对：
+
+- build/build-0.5-resume.log含完整构建及12/12 CTest通过，总13.40秒；包括annotation_client_faults。全量构建由主管执行，本角色未再次执行整套。后端20项pure由本角色此前亲自通过，最新主管20/20、856ms另有日志，不替换执行主体。
+- build/shared-user-0.5-offscreen-semantic.log及windows.log都实际输出创建/精确scope/多行/UTC、CAS冲突/刷新保草稿/显式rev3、同UUID丢已提交响应重试当前DTO、脏scope/错DTO/缺part/旧回调、断服与重建持久等全部1；ANNOTATION_HARNESS accepted=1和SHARED_HARNESS cleanup=1。模拟用户亲自运行，审查者没有争用ev_test再跑。
+- 独立逐张查看11-cas-conflict-draft、12-refreshed-separate-draft、14-idempotent-current-revision-draft三张Windows图：冲突时乙草稿与旧保存内容分开；刷新后保存内容/版本变为甲rev2但乙草稿原文仍在；原POST重试返回乙已更新rev2同时保留甲原新增草稿。作者、更新者和UTC明示清楚，令牌遮蔽。图像不冒充SQL/幂等计数证明。
+- chooseCombo helper从错误popup鼠标定位改为逐次真实键盘Up/Down，每次等待异步idle且断言实际索引变化。没有调用控制器/网络回调或直接setter绕过业务；首次失败属于测试前提，仍应由模拟反馈保留过程并更新最终状态。
+- 完整读新增harness代理/暂停重建/最终SQL断言及收尾：显式ev_test/3310/ev_app/本机/空库守卫；真实POST201完成后再故意丢响应，重试UUID/原payload严格相同、返回当前rev2；最终3批注的关联/作者/revision1/3/4与geometry2设备4parts核对。关闭本次ephemeral app/proxy/stall、清proxyTimers/socket，再按annotations→part→equipment→schema_version清自己四表；临时目录父路径/专属前缀校验不变。正常ev_shared/8765/原MySQL80不属于测试目标。
+- 最终协议明确原POST返回当前存续DTO、UTC显示、dirty关闭取消等待并保留窗口；修复与实现一致。Dialog cpp=9EA7BBA3CD79625C0CBFBB00B21DED2E20CD0682C79D48F20C67B872F5CD657A，相对前次只校准UTC明示/ISO显示；h=AB3EC5F78C1340BAA668ECBD64656F81E74243943B1D60E101F3E871262CC60D。ApiClient、repository/server/annotations与已审哈希不变。shared_user_tests=D8F5090FD93DA628F1926AACCE0BC5BCB104052D4AB28CDA5398830AE06753A2，run_shared_user=ACC806F08E2B28DEDC200A5846DD8CACFC282B4861AC67319DA2BA529AA450A5，契约=BD1622CFB944AFD5A52D8A314820F148D8FDAB1ADDE0A7744A415B91EC73A2F4。限定diff --check无错误。
+
+主服务备份/迁移：主管报告已有备份后ev_shared正常eq/part为空基线保持、schema2及health up。此实际主库操作由主管执行，本角色未迁移共享库；backup文件/hash已核对但restoreVerified=false、恢复实测未完成的事实继续保留，不宣称完整恢复验证。
+
+下一步：主管0.5包/依赖隔离/敏感文件与manifest提交一致核对后提供metadata，再作包复核。源码检查点明确排除未启用的0.6 runtime工具/cache-plan与后续resource tests；本角色继续独审这些下一阶段准备文件。

@@ -1,12 +1,12 @@
 {
     "name": "equipment-viewer-api",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "private": true,
     "type": "module",
     "engines": { "node": ">=24.18.0" },
     "scripts": {
         "start": "node src/server.mjs",
-        "test": "node --test test/validation.test.mjs test/http.test.mjs test/repository.test.mjs test/setup-config.test.mjs",
+        "test": "node --test test/validation.test.mjs test/http.test.mjs test/repository.test.mjs test/setup-config.test.mjs test/annotations.test.mjs",
         "test:integration": "node --test test/integration.test.mjs"
     },
     "dependencies": { "mysql2": "3.24.5" }

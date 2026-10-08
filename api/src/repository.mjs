@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import { ApiError } from './validation.mjs';
+import { annotationFingerprint } from './annotations.mjs';
 
 const databaseError = () => new ApiError(503, 'DATABASE_UNAVAILABLE', '共享数据库暂时不可用，请稍后重试。');
 const timeoutError = () => new ApiError(503, 'DATABASE_TIMEOUT', '共享数据库操作超时，请稍后重试。');
@@ -25,6 +26,29 @@ const schemaStatements = [
     ) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS schema_version (id TINYINT NOT NULL PRIMARY KEY, version INT NOT NULL) ENGINE=InnoDB`
 ];
+const annotationSchema = `CREATE TABLE IF NOT EXISTS annotations (
+    id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+    equipment_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE ${collation} NOT NULL,
+    part_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE ${collation} NULL,
+    text LONGTEXT CHARACTER SET utf8mb4 NOT NULL,
+    author VARCHAR(80) CHARACTER SET utf8mb4 NOT NULL,
+    updated_by VARCHAR(80) CHARACTER SET utf8mb4 NOT NULL,
+    revision INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    original_payload_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    KEY annotation_scope (equipment_id, updated_at, id),
+    CONSTRAINT annotation_equipment FOREIGN KEY (equipment_id) REFERENCES equipment(id),
+    CONSTRAINT annotation_part FOREIGN KEY (equipment_id, part_id) REFERENCES part(equipment_id, id)
+) ENGINE=InnoDB`;
+const annotationSelect = `SELECT id,equipment_id AS equipmentId,part_id AS partId,text,author,
+    updated_by AS updatedBy,revision,UNIX_TIMESTAMP(created_at)*1000 AS createdEpoch,
+    UNIX_TIMESTAMP(updated_at)*1000 AS updatedEpoch,original_payload_hash AS originalPayloadHash FROM annotations`;
+function annotationDto(row) {
+    return { id: row.id, equipmentId: row.equipmentId, partId: row.partId, text: row.text, author: row.author,
+        updatedBy: row.updatedBy, revision: row.revision,
+        createdAt: new Date(Number(row.createdEpoch)).toISOString(), updatedAt: new Date(Number(row.updatedEpoch)).toISOString() };
+}
 
 /** 连接池与参数绑定的数据层；所有发布写入在一个事务内完成。 */
 export class EquipmentRepository {
@@ -151,13 +175,135 @@ export class EquipmentRepository {
                 if (pad[0]?.PAD_ATTRIBUTE !== 'NO PAD') throw new Error('identity padding unsupported');
                 await connection.execute('INSERT IGNORE INTO schema_version (id,version) VALUES (?,?)', [1, 1]);
                 const [version] = await connection.execute('SELECT id,version FROM schema_version');
-                if (version.length !== 1 || version[0].id !== 1 || version[0].version !== 1)
+                if (version.length !== 1 || version[0].id !== 1 || ![1, 2].includes(version[0].version))
                     throw new Error('unsupported schema version');
+                // MySQL DDL隐式提交：先增建/验证，不把它伪装成可回滚迁移；仅完整兼容后升版本。
+                await connection.execute(annotationSchema);
+                await this.checkAnnotationSchema(connection);
+                await connection.execute('UPDATE schema_version SET version=? WHERE id=? AND version IN (?,?)', [2, 1, 1, 2]);
             }, options);
         } catch (error) {
             if (error.code === 'DATABASE_TIMEOUT') throw error;
             throw new ApiError(503, 'DATABASE_SCHEMA_ERROR', '共享数据库连接或结构不兼容，请检查服务配置与迁移说明。');
         }
+    }
+
+    /** 校验0.5增量表与本库关联；失败保留已建表/旧标记供重复启动核实。 */
+    async checkAnnotationSchema(connection) {
+        const [columns] = await connection.execute(`SELECT COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH,COLLATION_NAME,IS_NULLABLE
+            FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='annotations'`);
+        const expected = { id: ['char', 36, 'ascii_bin'], equipment_id: ['varchar', 128, collation],
+            part_id: ['varchar', 128, collation], text: ['longtext'], author: ['varchar', 80], updated_by: ['varchar', 80],
+            revision: ['int'], created_at: ['timestamp'], updated_at: ['timestamp'], original_payload_hash: ['char', 64, 'ascii_bin'] };
+        if (columns.length !== 10 || columns.some((column) => {
+            const rule = expected[column.COLUMN_NAME];
+            return !rule || column.DATA_TYPE !== rule[0]
+                || column.IS_NULLABLE !== (column.COLUMN_NAME === 'part_id' ? 'YES' : 'NO')
+                || (rule[1] !== undefined && Number(column.CHARACTER_MAXIMUM_LENGTH) !== rule[1])
+                || (rule[2] !== undefined && column.COLLATION_NAME !== rule[2])
+                || (['varchar', 'longtext'].includes(column.DATA_TYPE) && !column.COLLATION_NAME?.startsWith('utf8mb4_'));
+        })) throw new Error('incompatible annotations');
+        const [engines] = await connection.execute(`SELECT ENGINE FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='annotations'`);
+        if (engines.length !== 1 || engines[0].ENGINE !== 'InnoDB') throw new Error('annotation engine');
+        const [keys] = await connection.execute(`SELECT INDEX_NAME,NON_UNIQUE,GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS columns_list
+            FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='annotations'
+            GROUP BY INDEX_NAME,NON_UNIQUE`);
+        if (!keys.some((key) => key.INDEX_NAME === 'PRIMARY' && Number(key.NON_UNIQUE) === 0 && key.columns_list === 'id')
+            || !keys.some((key) => key.INDEX_NAME === 'annotation_scope' && key.columns_list === 'equipment_id,updated_at,id'))
+            throw new Error('annotation indexes');
+        const [foreignKeys] = await connection.execute(`SELECT CONSTRAINT_NAME,COLUMN_NAME,REFERENCED_TABLE_SCHEMA,
+            REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME,DATABASE() AS current_schema
+            FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='annotations'
+            AND REFERENCED_TABLE_NAME IS NOT NULL`);
+        const expectedForeign = [['annotation_equipment', 'equipment_id', 'equipment', 'id'],
+            ['annotation_part', 'equipment_id', 'part', 'equipment_id'], ['annotation_part', 'part_id', 'part', 'id']];
+        if (foreignKeys.length !== 3 || !expectedForeign.every(([constraint, column, table, referencedColumn]) => foreignKeys.some((key) =>
+            key.CONSTRAINT_NAME === constraint && key.COLUMN_NAME === column && key.REFERENCED_TABLE_NAME === table
+            && key.REFERENCED_COLUMN_NAME === referencedColumn && typeof key.current_schema === 'string' && key.current_schema
+            && key.REFERENCED_TABLE_SCHEMA === key.current_schema))) throw new Error('annotation foreign keys');
+    }
+
+    /** 业务事务统一处理回滚与销毁，沿用总时限和取消保护。 */
+    inTransaction(action, options) {
+        return this.withConnection(async (connection) => {
+            let transaction = false;
+            try {
+                await connection.beginTransaction();
+                transaction = true;
+                const result = await action(connection);
+                await connection.commit();
+                transaction = false;
+                return result;
+            } catch (error) {
+                if (transaction && !connection.destroyed) {
+                    try { await connection.rollback(); } catch { connection.destroy(); }
+                }
+                throw error;
+            }
+        }, options);
+    }
+
+    /** 核实设备/零件精确关系，不存在返回安全404，不按名称定位。 */
+    async requireAnnotationScope(connection, scope) {
+        const [equipment] = await connection.execute('SELECT id FROM equipment WHERE id=?', [scope.equipmentId]);
+        if (equipment.length === 0) throw new ApiError(404, 'NOT_FOUND', '批注关联的设备不存在。');
+        if (scope.partId !== null) {
+            const [parts] = await connection.execute('SELECT id FROM part WHERE equipment_id=? AND id=?', [scope.equipmentId, scope.partId]);
+            if (parts.length === 0) throw new ApiError(404, 'NOT_FOUND', '该设备的批注零件不存在。');
+        }
+    }
+
+    /** scope按精确设备/可选零件身份筛选，最多最近200条，排序稳定。 */
+    async listAnnotations(scope, options) {
+        return this.withConnection(async (connection) => {
+            await this.requireAnnotationScope(connection, scope);
+            const [rows] = await connection.execute(annotationSelect + ` WHERE equipment_id=?`
+                + (scope.partId === null ? '' : ' AND part_id=?') + ' ORDER BY updated_at DESC,id ASC LIMIT 200',
+                scope.partId === null ? [scope.equipmentId] : [scope.equipmentId, scope.partId]);
+            return rows.map(annotationDto);
+        }, options);
+    }
+
+    /** UUID幂等创建，创建原始指纹独立于后续修改，重复不生成新记录。 */
+    async createAnnotation(value, options) {
+        const fingerprint = annotationFingerprint(value);
+        const existingResult = (row) => {
+            if (row.originalPayloadHash !== fingerprint)
+                throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', '该requestId已用于其他批注内容，请核实原保存结果。');
+            return { created: false, annotation: annotationDto(row) };
+        };
+        return this.inTransaction(async (connection) => {
+            const [existing] = await connection.execute(annotationSelect + ' WHERE id=?', [value.requestId]);
+            if (existing.length > 0) return existingResult(existing[0]);
+            await this.requireAnnotationScope(connection, value);
+            try {
+                await connection.execute(`INSERT INTO annotations (id,equipment_id,part_id,text,author,updated_by,original_payload_hash,
+                    revision,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))`,
+                    [value.requestId, value.equipmentId, value.partId, value.text, value.author, value.author, fingerprint]);
+            } catch (error) {
+                if (error.code !== 'ER_DUP_ENTRY') throw error;
+                // 并发同UUID插入在唯一键等待后失败；锁定读越过此前快照，读取已提交原记录。
+                const [duplicate] = await connection.execute(annotationSelect + ' WHERE id=? FOR UPDATE', [value.requestId]);
+                if (duplicate.length !== 1) throw error;
+                return existingResult(duplicate[0]);
+            }
+            const [rows] = await connection.execute(annotationSelect + ' WHERE id=?', [value.requestId]);
+            return { created: true, annotation: annotationDto(rows[0]) };
+        }, options);
+    }
+
+    /** 单条CAS不覆盖他人修改，返回DTO在commit前读取，提交后不再依赖额外查询。 */
+    async updateAnnotation(id, value, options) {
+        return this.inTransaction(async (connection) => {
+            const [result] = await connection.execute(`UPDATE annotations SET text=?,updated_by=?,revision=revision+1,
+                updated_at=CURRENT_TIMESTAMP(6) WHERE id=? AND revision=?`, [value.text, value.editor, id, value.expectedRevision]);
+            const [rows] = await connection.execute(annotationSelect + ' WHERE id=? FOR UPDATE', [id]);
+            if (rows.length === 0) throw new ApiError(404, 'NOT_FOUND', '批注不存在。');
+            if (result.affectedRows !== 1)
+                throw new ApiError(409, 'REVISION_CONFLICT', '批注已由他人修改，请刷新已保存内容，确认草稿后显式提交。');
+            return annotationDto(rows[0]);
+        }, options);
     }
 
     async health(options) {

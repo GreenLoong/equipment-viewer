@@ -2,83 +2,44 @@
 
 更新日期：2026-10-08。实际工程：D:/作业/简历/工作模拟。
 
-## 最新状态
+## 当前目标与授权
 
-交互桌面版核心代码已构建，九项CTest通过；原生OpenGL场景、完整属性交互与主程序截图串行复验通过。独立源码/脚本审查未发现阻断打包的问题。功能提交与桌面包均已完成，去除Qt环境后的包运行及最终独立复核通过。当前等待真实用户体验反馈，后续需求另行派发。
+用户要求全部Agent开发，按0.3→0.4→0.5→0.6→0.9→1.0连续迭代、模拟用户反馈、独立审查和测试，并推送GitHub。不等待逐功能实现或确认；技术检查、模拟验收与真实验收分开。允许下载必要依赖与本机独立服务，不包含付费或公开部署。
 
-本轮额度中断时数据/三维/控制器/窗口文件均已落盘，CMake与workflow测试的创建/构建尚未执行；恢复后已补齐，没有删除正常数据库或重建远程。
+有效规范docs/engineering-standards.md v1.1尤其第12节；路线docs/release-plan-1.0.md。保留正常数据、用户改动和远端历史，不force/reset --hard/clean。凭证、数据库、runtime、生成物不提交。
 
-## 恢复读取顺序
+## 已发布检查点
 
-1. AGENTS.md 的持续开发和恢复规则。
-2. docs/engineering-standards.md v1.0，包含第11节检查点与恢复。
-3. 本文件及 docs/handoffs/；核对实际 Git 状态、差异、工具进程及输出文件。
+0.2功能8ebe748/文档3bb65dd；远端初始历史已由1b6ba2b保留合并。0.3为03c0c1a，0.4为aef7499，均已推送main/feature及v0.3.0/v0.4.0。分支feature/release-1.0，origin=https://github.com/GreenLoong/equipment-viewer.git（私有）。Git单次safe.directory=D:/作业/简历/工作模拟，不改全局。
 
-角色可能已结束或因额度失败，不能假定旧Agent仍运行。按文件负责人重新分配，不从work副本覆盖工程中的新修复。
+包位于原聊天outputs独立时间戳目录；0.4 manifest对应aef7499、dirty=false，已清Qt环境原生smoke及独审通过。证据见docs/releases/0.4.md和review handoff。真实用户仅验收环境/记录与F01-1，后续不伪造用户验收。
 
-## 范围与授权
+## 当前0.5（尚未发布）
 
-用户已授权全部由Agent连续开发到可交互本地桌面交付，并通过明确标记的模拟用户反馈迭代；不要求用户写代码或逐小功能确认。真实验收与模拟验收分开记录。
+批注后端、MySQL v1→v2增量迁移、CAS冲突、原UUID幂等重试、UTC与Qt草稿界面已落盘，版本0.5.0。后端pure20/20、真实ev_test integration1/1已通过；review R05-01至05修正源码复核接受。
 
-已实现：SQLite资料、JSON导入、多设备选择、只读属性、三维旋转缩放/查看全部、拾取高亮、显隐、搜索、隔离查看。网络/MySQL/Redis是另行定义范围的后续扩展，本轮无外部服务依赖。
+恢复后shared_user_tests重编成功。独立reviewer_annotation_faults实际退出0，dirty关闭、缺part、错UUID/part、recent200和旧回调取消全部accepted=1（controlledHttp，非真实MySQL）。全量12CTest通过13.40s，pure20通过856ms。真实MySQL双窗口offscreen/windows均全部accepted=1/cleanup=1；首轮combo鼠标及提示措辞测试预设已修测试helper并保留失败证据，没有改业务。
 
-局部实现、验证、文档及本地Git检查点已有授权；不推送、不发布、不新增付费服务、不删除正常数据库。
+主API旧0.4会话43076已受控关闭，新前台78001运行0.5.0，health/mysql up，ev_shared schema2。迁移前后eq/part逐项核对一致（正常共享库原本为空，非空无损迁移由ev_test验证）。已有一致性备份.recovery/sql/2026-10-08T00-37-09-996Z-40aa75a9，3780字节、SHA核对通过，restoreVerified=false；不声称恢复验证。backup R05-01写失败凭证文件归属修复已独审/替身回归通过。当前等最终独审/包/远端，不提前记发布。
 
-## Git与数据库保护
+## 负责人
 
-- 基线检查点：cbc879f2c6c867b551e5d004adf254de98bfc769。
-- 当前分支：feature/interactive-viewer，交互版检查点8ebe748244bd1adc7b282e3e19db2b68d71c12bf；源码未推送远程。
-- 正常数据库一致性快照：.recovery/databases/20261008-014858-227085，两份quick_check均ok；Git忽略该目录。
-- 首次备份曾因连接未关闭而重命名失败，已用closing修复并重试成功；早期.partial保留，不是有效快照。
-- 源码回退不能恢复数据库；禁止reset --hard、clean或清库。优先修复分支或指定提交回退，保留未提交工作。
+root负责Qt集成/CMake/公共文档/Git/交付。backend_v1负责api及自己的handoff，当前仅准备Redis runtime工具，不启用缓存、不改版本、不占ev_test。simulated_user_v1负责shared_user_tests/run_shared_user与反馈，目前独占ev_test串行测试，不改业务。review_v1只读独审业务，拥有reviewer_annotation_faults及审查handoff。各文件单一负责人，构建串行。
 
-## 文件负责人及交接
+## 服务与数据安全
 
-| 角色 | 已完成 | 下一步 |
-| --- | --- | --- |
-| 主管/集成 | Controller/Window/CMake/main、工作流测试、启动与打包脚本、公共文档 | 已完成，保存最终文档检查点 |
-| 数据工程师 | Importer、import_tests、两份虚构samples | 已记录主管统一验证结果 |
-| 图形工程师 | SceneView、scene_tests，GL销毁回调加固 | 已记录最终原生测试结果 |
-| 独立审查 | 核心代码及脚本已复查 | 最终独立复核通过，真实用户尚未验收 |
+最近核对：独立MySQL3310 PID63920，正常API8765前台session78001。操作前重新核实，不能假设PID仍有效。原MySQL80的3306实例不操作。独立数据/标记在LOCALAPPDATA/EquipmentViewerSimulation；api/runtime配置忽略，不打印内容。
 
-固定接口：Importer::parse失败不改输出；SceneView按Part/ID/隐藏集合绘制，不访问DB；控制器是当前查看状态来源。构建/公共文档由主管统一维护。
+ev_shared正常共享库；ev_test只从空库取得本轮所有权，非空拒绝测试和清理，清理annotations→part→equipment→schema_version。不删除正常SQLite。快照在.recovery/databases，Git不恢复数据库。
 
-## 实际验证与已修复问题
+## 0.6准备与后续
 
-- 首次业务测试有清除选择按钮回归，已恢复始终可点击并复验。
-- 独立审查指出GL派生析构后基类上下文信号可能访问已销毁成员，已保存连接并在cleanup先断开，增加3次父窗创建/绘制/销毁回归。
-- 导入已保存后设备列表读取错误曾被成功提示覆盖，已修复提示保留。
-- 最终九项CTest：全部通过，7.49秒，使用临时数据库。
-- 原生Scene输出“原生OpenGL”，拾取/旋转/缩放/隐藏/极端值/生命周期检查通过；原生Window属性五步及main截图全部退出0。
-- 早期两个原生GL工具并行时一次main外层非零，串行多次为0；未稳定复现，不声称已定位同一根因。
-- 原生截图在忽略的build目录；软件回退的遮挡精度限制已在指南披露；其他电脑及复杂设备性能未验证。
+Redis官方7.4.7下载校验并在WSL /opt/equipment-viewer-redis/redis-7.4.7编译成功（MALLOC=libc、无TLS），未启动或接API。归档SHA256 c97e57b0df330a9e091cacff012bebe763c275398cf36ff44cdba876814b595b。WSL网络None，计划受控前台TCP桥接，不改全局WSL配置。规则见docs/cache-plan-0.6.md。
 
-## 已完成交付与下一步
+下一步：0.5真实模拟验收→独审→正常API增量升级→文档/Git/包/远端；再0.6缓存HIT/MISS/断开回源；0.9资源/数据恢复/包装；全部通过后1.0交付。不得只改版本号。
 
-本地功能提交、独立bundle/ZIP、依赖隔离运行、最终独立复核已完成。当前保存文档检查点；下一轮依据真实用户体验或新业务需求继续，不重复执行已完成交付操作。
-## 恢复指令
+## 恢复与检查入口
 
-继续项目，先读取AGENTS.md、docs/working-state.md和handoffs，核对Git及实际包文件，从未完成项按技术规范继续；保留数据与已有代码，不重复创建远程、不假设旧Agent仍存活。
+先读AGENTS/规范/本文/handoffs，再核Git状态、实际进程与Agent存活；已停Agent须followup唤醒或重新分配。新/变化脚本执行前阅读。scripts/build.ps1 fresh配置、编译、Qt部署、CTest；原生OpenGL另验。package.ps1从CMake读取版本、独立目录不覆盖旧包、不含数据库/令牌。
 
-## 最终包与验证结果
-
-- bundle及ZIP：原聊天目录outputs/equipment-viewer-0.2-20261008-031644(.zip)，附启动设备查看器.cmd、使用说明与两份samples。
-- manifest记录sourceCommit=8ebe748、sourceHasUncommittedChanges=false、数据库未包含；EXE SHA256=C111C6A52729850D8A43871967682BC7478EE3DF595C1EB699D946709F7C672F，与构建程序一致。
-- 主管将PATH临时仅保留Windows并清Qt插件变量，包原生smoke退出0；同一临时库两次equipment-check均1台/3零件、退出0；包扫描无数据库/.env/密钥。
-- 最终独立审查只读代码、包/ZIP清单、manifest、哈希及截图，未发现阻断桌面交付的问题；程序实际运行由主管完成，真实用户未验收。
-- 使用指南、技术导读、预览图片和技术规范在outputs；此工程正常数据库未被测试或打包使用。
-- 后续只在真实体验反馈或新需求下继续下一阶段；已完成的五项交付操作无需重复执行。恢复先核对实际状态，不重复建仓库或覆盖旧bundle。
-## 新任务覆盖旧等待状态
-用户已授权逐版本推进到1.0并推送远端，当前0.3，详见docs/release-plan-1.0.md和规范第12节；取消等待下一轮需求的旧状态。
-
-## 0.3当前进展
-两条模拟用户需求已修复；10项CTest通过，原生模拟测试两项与4焦点均通过、截图独立查看通过。独立review首轮通过，打包版本参数已加固，正做0.3提交/打包/远端；0.4后端代码已落盘，pure tests通过，MySQL配置/客户端/真实集成尚待实施，未提前标0.4发布。
-
-## 0.4当前未完成
-项目独立MySQL3310已就绪，原MySQL80保留；后端初轮3个review问题已修复并有pure11/11、真实integration1/1。受控API session89956运行旧模块，需在新代码复审后统一重启。Qt ApiClient/CollaborationDialog与共享库入口已落盘但未构建/验证；正在新增网络生命周期和真实两客户端测试。0.3已push main/feature/tagv0.3.0，包已清Qt环境原生启动0、哈希一致；manifest脏状态来自未提交的0.4 API，在0.3Qt包中未包含。不得提前记0.4发布。
-
-## 本次额度恢复后的真实核对
-上轮0.4初始Qt构建实际11CTest通过11.82秒，但未覆盖后续review新发现，不能当缺陷已关闭。3310中断后已不监听，helper读取原标记恢复PID63920，不重建/清库；8765旧API PID59068仍在。backend pool.end拒绝收尾已修pure14与真实integration1过。root已修2xx传输错误检查、QPointer取消快照、queued回调与generation取消已排队成功结果，新增截断/queued取消/首回调销毁client回归，正在验证；0.4未发布。
-
-## 0.4发布检查点准备
-已修review R04-01..06/queued取消，root最新11CTest通过12.08s，纯14/真MySQL1过，模拟用户8场景offscreen/windows均accepted/cleanup1，图独立验收通过，完整0.4独立结论待最终包范围核对。主API已受控停旧session89956，最新session43076运行127:8765；MySQL标记恢复63920。正版本包/远端，0.5尚未写代码。
+每个已验证里程碑检查diff --check/cached/status后提交并推送feature/main/tag。无部署工作流这一前提变化时复核。额度突然中断不保证最后记录，依最近落盘恢复，不能保证刷新自动唤醒Agent。

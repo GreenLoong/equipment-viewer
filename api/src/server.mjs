@@ -6,8 +6,9 @@ import path from 'node:path';
 import { TextDecoder } from 'node:util';
 import { ApiError, maximumBodyBytes, validateEquipment, validateText } from './validation.mjs';
 import { EquipmentRepository } from './repository.mjs';
+import { validateAnnotationCreate, validateAnnotationUpdate, validateAnnotationQuery, validateUuid } from './annotations.mjs';
 
-export const version = '0.4.0';
+export const version = '0.5.0';
 const hash = (value) => createHash('sha256').update(value).digest();
 
 /** 读取忽略的本机配置；失败只给出安全提示，不输出秘密或文件内容。 */
@@ -180,6 +181,23 @@ export async function createApp(config, { repository } = {}) {
                 const equipment = await runDatabase('get', id);
                 if (!equipment) throw new ApiError(404, 'NOT_FOUND', '设备不存在。');
                 send(response, 200, { data: equipment });
+            } else if (pathname === '/api/annotations') {
+                if (request.method === 'GET') {
+                    send(response, 200, { data: await runDatabase('listAnnotations', validateAnnotationQuery(query)) });
+                } else if (request.method === 'POST') {
+                    if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers['content-type'] ?? ''))
+                        throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', '批注请求需要application/json。');
+                    const result = await runDatabase('createAnnotation', validateAnnotationCreate(await readJson(request)));
+                    send(response, result.created ? 201 : 200, { data: result.annotation });
+                } else throw new ApiError(405, 'METHOD_NOT_ALLOWED', '此接口只允许GET或POST。');
+            } else if (pathname.startsWith('/api/annotations/') && !pathname.slice(17).includes('/')) {
+                if (request.method !== 'PUT') throw new ApiError(405, 'METHOD_NOT_ALLOWED', '此接口只允许PUT。');
+                if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers['content-type'] ?? ''))
+                    throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', '批注请求需要application/json。');
+                let id;
+                try { id = validateUuid(decodeURIComponent(pathname.slice(17))); }
+                catch { throw new ApiError(400, 'VALIDATION_ERROR', '批注ID必须是UUID。'); }
+                send(response, 200, { data: await runDatabase('updateAnnotation', id, validateAnnotationUpdate(await readJson(request))) });
             } else throw new ApiError(404, 'NOT_FOUND', '接口不存在。');
         } catch (error) {
             const safe = error instanceof ApiError ? error : new ApiError(500, 'INTERNAL_ERROR', '服务暂时无法完成请求。');

@@ -48,3 +48,29 @@ Node harness已检查源码并执行 `node --check tests/run_shared_user.mjs` �
 已独立查看Windows八张截图，发布/重复拒绝/下载/错误令牌/pending/服务断开提示清楚，令牌遮蔽，离线新窗口保留同名零件的精确ID、模型和完整属性；中文/英文可读，无观察到遮挡或截断。八项模拟验收通过，非真人验收，代码review由独立角色另记。第一次顺序断言错误保留为历史，复验未发现业务缺陷。
 
 下一版0.5建议已写入 `docs/user-feedback-0.4.md`：所选零件工艺批注（按设备/零件精确ID关联、作者/时间/修订号、跨客户端持久可读），以及可变批注的修订冲突保护（旧版本拒绝、草稿保留、刷新后显式重新提交）。需求来源是实测0.4只有共享几何和只读属性入口，没有工艺意见入口；不把尚不存在的批注/冲突功能写成已观察到bug。待主管冻结0.5契约后分配新测试，暂未新增0.5文件或业务。
+
+## 0.5准备状态
+
+主管已发布0.4源码aef7499并冻结0.5工艺批注/CAS契约。本角色已读新增契约，并仅修改 `tests/run_shared_user.mjs` 收尾：取得ownTables空库所有权后，先drop annotations，再part/equipment/schema_version；node --check退出0。未执行GUIharness，未改业务、CMake或API。
+
+已与backend_v1协同：他当前独占ev_test进行0.5真实验证，integration先清annotations并确认空库后会通知。本角色等待主管GUI接口/完成通知再约定独占时段，不同时跑ev_test。
+
+新增 `docs/user-feedback-0.5.md` 保存九项待运行用例：精确设备/零件scope、多行意见、同revision冲突、独立草稿保留、刷新后显式重提交、结果不确定时同UUID重试、断线草稿、真实服务重建持久与UTC显示、设备级意见和显式放弃/关闭取消。新GUI控件接口尚未给出，C++测试未提前修改。受控代理丢一次已提交响应的方案用于真实幂等重试，不调用网络回调冒充错误。
+
+## 0.5实际测试已落盘待编译
+
+已收到冻结控件接口并读取当前collaborationdialog.cpp，实际扩展 `tests/shared_user_tests.cpp` 至约31KB，保留0.4用例并加入核心创建→两人同rev→冲突草稿→刷新→显式rev3，dirty Esc/标题close与Discard后回收、中文粘贴/剪贴板还原、同名/跨eq/设备nullscope、已提交201响应丢失同UUID重试（乙先改rev2，甲重试当前DTO保留草稿再显式rev3）、断服草稿和重建持久/UTC。
+
+`tests/run_shared_user.mjs` 约16.6KB，新增真实API转发故障代理、pause/resume同端口服务重建，以及wrong noteId/part、过滤scope、缺part、延迟旧GET后取消的新请求保护。final真实SQL核3批注及revision1/3/4，幂等不重复，仍只清本轮拥有4表。node --check/diff --check退出0。不是仅规划，源文件已经落盘并通知主管立即重编；未运行旧exe、未改业务/CMake/API。
+
+后台已报告0.5integration结束并清空ev_test；本角色待新测试构建通知后协调独占运行。静态发现无时区本地metadata后主管已改明确UTC显示，尚未运行，不当作已复现业务bug。实际测试入口/完整范围见0.5反馈。
+
+首轮0.5实际offscreen执行已发生：退出1（约5.7秒），0.4发布与下载基本路径先通过；设备弹出combo选择 `..` 后实际currentData不符，停止在进入批注前。日志 `build/shared-user-0.5-offscreen.log`，owned4表cleanup=1。先仅为test helper加实际/期望ID、索引、状态与失败截图诊断并请求重编，不提前定性产品bug。windows尚未跑，0.5核心未验收；具体步骤已落盘0.5反馈。
+
+## 0.5模拟验收完成
+
+主管授权仅测试目标增量构建，并通知全量build结束。本角色自行Ninja重编诊断/修正的shared_user_tests，按真实Up/Down逐项选择并等待异步scope，修正冲突文案假设后加真实HTTP409/REVISION_CONFLICT核对；未改业务/CMake/API。诊断日志保留，鼠标popup模拟未选中不判为产品缺陷；本轮范围以实际键盘切换为准。
+
+最终亲自串行offscreen/windows完整退出0：日志 `build/shared-user-0.5-offscreen-semantic.log` 与 `build/shared-user-0.5-windows.log`。九项主用例及wrongID/part/scope/missingpart/旧取消回调保护全1；真实代理确认201已提交丢响应→相同UUID原payload200、另一客户端已改DTO仍保留不同草稿；真实pause/resume服务重建与SQL核3条批注revision1/3/4及author/updatedBy/精确关联通过。旧0.4用例全通过，owned4表cleanup1，已通知backend ev_test空库释放。
+
+独立查看九张新增Windows图：保存与草稿分区清楚，冲突/断线/错身份红字可读，dirty Esc/titleclose后草稿仍在，刷新后最新版本与旧草稿并存，UTC时间明确，令牌遮蔽，持久化新服务读取正确。无阻断体验问题，不需生产修复。列表长预览可横向滚动，完整正文在保存区；200条外选择/极端窗口尺寸/跨电脑尚未本轮实测。0.5模拟验收通过，非真人、非代码review。所有历史失败及测试修正已落盘feedback0.5。

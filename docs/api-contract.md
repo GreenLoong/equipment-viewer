@@ -1,6 +1,6 @@
-# 0.4共享设备库API契约（冻结版）
+# 共享设备库API契约
 
-2026-10-08。只实现0.4，0.5批注与0.6缓存需后续阶段独立验收。有效规范v1.1。
+2026-10-08。0.4为共享库基线，0.5新增批注，下面按增量说明；0.6缓存尚未生效。有效规范v1.1。实际运行版本以GET /health返回为准，磁盘源码版本不代表已重启服务。
 
 ## 服务与配置
 
@@ -36,3 +36,21 @@ api/src/server.mjs为启动入口；环境EV_CONFIG_FILE指定本机JSON，默�
 GET /api/equipment?id=<percentencoded>为详情query别名，无id仍列表；用于保留点/斜线等精确ID，重复id参数或无效percent编码拒绝400。桌面关闭对话框立即取消等待；不能保证服务器尚未提交，需刷新确认，不自动重发POST。
 
 客户端配置单独为api/runtime/client.local.json，只含host/port/token，不包含MySQL密码；桌面不能读取service.local.json。可选operationTimeoutMs默认10000（1..120000）、closeTimeoutMs默认1000（1..10000），操作超时503/DATABASE_TIMEOUT。提交中断可能已完整提交，客户端刷新不可变ID确认，不宣称远端已撤销。
+
+# 0.5增量：工艺批注与修订冲突（0.4已发布后生效）
+
+模拟需求见user-feedback-0.4。geometry仍不可变。本轮新增annotations，不启用Redis；先备份ev_shared再新增兼容表，不drop已有资料。迁移需显式版本记录/重复启动可恢复，MySQL DDL隐式提交需说明。保留0.4接口与数据不回归。
+
+annotations字段：id UUID（请求requestId作ID，规范小写）、equipment_id(现有精确ID FK)、part_id(nullable，同eq part联合FK)、text LONGTEXT（非空白，最多2000 UTF16单元）、author（创建显示名≤80）、updated_by（最新修改显示名≤80）、revision INT初始1、created_at/updated_at。返回DTO{id,equipmentId,partId:null|string,text,author,updatedBy,revision,createdAt,updatedAt}；时间必须UTC ISO（用UNIX_TIMESTAMP epoch转换，避免系统时区误差）。显示名不是登录账户身份，本机Bearer令牌仍授权协作演示。
+
+GET /api/annotations?equipmentId=...&partId=...：必选equipmentId精确验证，partId可选；省略为全部该设备的最近200条，给定只该零件，必须存在设备/零件（404）。重复或非法参数400；newest-first稳定排序。data为DTO数组，空为[]。
+
+POST /api/annotations：body{equipmentId,partId:null或合法零件ID,text,author,requestId:UUID}，validate后事务写入并返回DTO，201。相同requestId及同一原始payload已存在返回200当前存续DTO（即使已有后续PUT，也不能回退内容或重建；支持不确定结果重试）；同UUID不同payload409/IDEMPOTENCY_CONFLICT，不生成重复。关联设备/零件必须存在，不能按名称，外键和参数绑定。请求整体限制沿用5MiB。
+
+PUT /api/annotations/:uuid：body{text,editor,expectedRevision}，text≤2000，editor≤80非空白，expectedRevision正整数≤2147483646。单条CAS条件id+revision更新revision+1、updated_by、updated_at，成功200 DTO。不存在404；旧revision409/REVISION_CONFLICT，必须保留旧数据，message说明刷新后再显式提交；禁止无条件覆盖。author/createdAt/关联身份不变。除Bearer鉴权无新增用户登录。
+
+客户端：共享库对话框选择设备后读取零件scope和批注；可将本地当前设备/选中零件作为默认scope（仅相同eq）。显示最新已保存内容/作者更新时间revision与独立草稿。新增、选中修改、刷新、显式放弃草稿；冲突/断网不清草稿，不自动重试POST/PUT；刷新可保留草稿并让用户确认最新保存内容再显式重提交。对话框关闭仍取消等待但不承诺撤销已经提交。ID已存在且批注下载无需改变本地geometry。
+
+测试：真实ev_test create/persist/关联同名精确IDs/无效关系404/空白与超限400/同requestId幂等及payload冲突/两客户端同revision并发200+409/保留author/UTC时间/服务重建；UI真实操作两用户同批注、冲突草稿保留、刷新和显式重提交、断服后草稿仍在。现有共享harness收尾必须先drop本轮annotations再part/equipment/schema_version，空库guard保留，不能动ev_shared或原服务。
+
+0.5界面批注元信息明确标UTC并显示ISO时间，不使用无标时区本地时间。dirty关闭只取消等待保留窗口，保存或显式放弃后才关闭；杀进程/额度突断不保证未保存内存草稿跨重启。
