@@ -376,3 +376,11 @@ backend另报告同脚本真1/1、完整pure38/38、严格空ev_test旧业务集
 最终结论：0.6已审业务/运行工具源码独立审查通过，真实缓存门槛齐全，没有阻断源码检查点/commit/tag的未关闭项。主管可按持续授权升级正常API、打包与同步远端。最终桌面包尚未给meta，不预记包通过；真实用户体验与跨机器/复杂设备性能仍未验收。0.7新三维/CAD/交互位于另一工作树，不纳入本版通过范围。
 
 接受范围以此前最终cache79DF/server8658/repo2385/runtime722D/5386/Python3C45/backup803C及各实际测试哈希为准；Qt Dialog9EA保持0.5行为，CMake/main仅0.6版本/测试目标增量。后续改动需按影响重新审，不把本结论套未完R07。
+
+## 0.6 桌面包最终独立核对通过
+
+本角色重新读取outputs/equipment-viewer-0.6.0-20261008-191409的manifest及ZIP：version0.6.0、sourceCommit30b5fcc2b27415a3f2ea88eeaee8aed751edc873、sourceHasUncommittedChanges=false、databaseIncluded=false。目录EXE、当前build EXE和ZIP内EXE独立SHA256均为4B1D55E6786438D408DE572F9CC52F844CBE94F85D93EA4FBE4FB6755CE1C690。ZIP32个条目，未发现db/sqlite/key/pem/local配置/env；范围为运行文件、虚构JSON样例和指南。
+
+已独立查看outputs/0.6包启动验证.png：原生窗口正常中文、三零件模型、共享入口；主管报告清Qt PATH/plugin环境native smoke退出0，本角色不冒充再次运行smoke。核对时HEAD为30b5，当前仅docs/user-feedback-0.7.md变化，属于后续CAD设计，不改变本包manifest构建时clean事实。
+
+最终发布门槛结论：0.6源码与桌面包独立审查通过，无本版阻断项，可依持续授权推送main/feature并建立v0.6.0。正常API升级/cache ready及无正常库测试写入由主管执行记录，本角色没有停止服务或操作普通库。真实用户体验、复杂模型性能和0.7/0.8尚未实施内容不属于此结论。

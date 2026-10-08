@@ -22,6 +22,24 @@ Scene负责投影与标尺，不读取SQL；Controller为隔离/显隐唯一状�
 
 装配分件、网格持久化、共享API是否支持CAD以及最终包的CAD运行库，技术验证后在本文件追加冻结设计再实现；不能把未确定方案写为完成。目标是用户选择STEP便能查看真实机械样例、选中/显隐/隔离与尺寸表达，不需要用户手工运行转换命令。
 
+### 0.8技术验证后的冻结设计
+
+采用Windows独立CPython3.12进程与OCP novtk/proxy7.9.3.1，不将MSVC CAD库链接MinGW Qt。已校验官方PyPI轮包SHA并检查metadata/导入代码，无安装启动脚本；安装只在忽略的.runtime/cad-python/site-packages。轴承STEP实际1实体约22×22×7mm，电机STEP实际6实体，绝不是手工创建包围盒替代模型。
+
+转换器读取STEP实体（包括已放置的装配实体）并以毫米传递，按实体输出真实面三角化。一个实体对应一条零件；有名称则保留，否则明确使用“实体0001”等生成名称，材料未提供时显示“未提供”。位置为全局外包络中心，尺寸为全局XYZ外包络，非质量中心或制造标注；曲面网格显示采用有限离散精度。开放曲面/无实体及格式错误拒绝。
+
+转换协议为版本1的UTF8 JSON结果文件：{protocol:'equipment-cad-mesh',version:1,unit:'mm',sourceName,sourceSha256,parts:[{id,name,material,shape:'mesh',dimensions:[x,y,z],position:[x,y,z],mesh:{vertices:[[x,y,z],...],triangles:[[i,j,k],...]}}]}。vertices以对应position为原点的局部毫米坐标；面位置累计到全局后再减中心，不能丢装配变换。顶点与三角索引有限且严格整数，反向面调整绕序。设备ID由源SHA256生成CAD-前缀稳定ID，重复文件拒绝覆盖；设备名用文件名。
+
+输入STEP最多100MiB，最多1000个实体；合计顶点≤600000、三角形≤400000，结果文件≤64MiB，转换≤120秒。Qt异步QProcess保证旋转/查看仍可操作，stdout/stderr累计受限，关闭/超时必须终止并确认自己的进程。Windows转换进程使用自己的Job Object限制2GiB并随拥有者退出清理，Linux可用RLIMIT；不停止其他Python进程。模型失败/输出超限/索引错误/保存失败均保留原设备和数据库。模型不是脚本，不执行来源仓库中的程序。
+
+Part新增不可变MeshGeometry共享所有权（double局部顶点、uint32三角索引）与CAD源名/SHA。Scene明确mesh分支绘制真实三角形，几何边界/归一化/标尺复用0.7实际尺度。Repository用明确shape='mesh'存储，不把CAD冒充box。SQLite结构升级只接受已知旧结构，在事务内重建part约束、逐字段复制全部旧行并复建已有索引/触发器，核对行数及foreign_key_check；外键关闭/恢复均检查，失败rollback且不删数据库。未知结构保留并报错，正常库先一致性快照。
+
+网格用版本化二进制BLOB（EVM1头、little-endian uint32顶点/三角数、double坐标与uint32索引），解析前核计数/期望字节数/64MiB上限，不采用可能无界膨胀的压缩载荷。CAD源名和SHA同一事务保存，重启可重新显示真实网格。规范和旧JSON/记录功能继续保留。
+
+本阶段CAD本地导入/查看/持久化；现有HTTP团队库仍只支持box/cylinder，CAD发布按钮须明确拒绝，不能把网格设备发布成包围盒。JSON基础设备的共享与批注仍正常。CAD共享作为之后独立业务扩展，不虚称1.0已经支持。
+
+通用Windows包附嵌入式Python与CAD轮包运行文件/源码入口/第三方许可，用户选择STEP即导入，不需要配置系统Python。公开轴承与电机样例保留CC-BY作者/来源/哈希。原生截图、洞/曲面几何、6实体位置、选择/双击隔离/标尺、重启、失败/超时及旧数据迁移分别测试并独审后才记0.8完成。
+
 ## 执行状态
 
 WSL已由用户恢复，主管实际Ubuntu-24.04 /bin/true退出0；不再等待旧WSL重启问题，不关闭全局WSL。独立MySQL3310已通过原标记恢复；Redis7.4.7专属setup已ready，尚未启用正常API缓存。0.6真实验收先执行，R07/R08按上述功能卡准备，正式发布仍逐版检查。
