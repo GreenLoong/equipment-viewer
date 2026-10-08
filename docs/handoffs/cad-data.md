@@ -24,3 +24,11 @@
 新增测试仅QTemporaryDir库：严格parser失败保留、EVM1长度/计数/NaN/索引/退化边界、bbox、mesh重启持久、坏BLOB拒绝；旧canonical含引号ID、box/cylinder全部字段、rowid42/99、index/trigger、两次initialize；name碰撞、TEMP碰撞、读锁制造COMMIT失败并核实DDL/数据回滚与外键恢复。补充后增量完整构建成功且无新增编译警告，最终13/13 CTest通过14.28秒，cad_repository通过1.45秒。提交前diff --check、cached、status已检查。
 
 未访问正常SQLite；正常库一致性快照及实际集成由主管负责。没有自称独立审查、模拟验收、真实用户验收或0.8发布；尚未完成独立审查与实际CAD/GUI集成验证。该树旧WSL工作状态不作为当前阻塞。
+
+## 真实转换器互操作续验
+
+读取backend实际OCP转换结果（20261008-233705-646的bearing.json和motor.json，仅忽略的runtime文件）。协议v1/unit mm/sourceSHA64、CAD-PART-0001起的ID与冻结接口一致，无需调整任一模块API。
+
+测试新增可选argv probe文件入口，源代码不含机器绝对路径。实际命令：`build/bin/cad_repository_tests.exe <bearing.json> <motor.json>`。2026-10-08重编该target成功，执行退出0：`608ZZ_Ball_Bearing.step parts=1 vertices=1444 triangles=1428 accepted=1`，`NEMA_17_with_connector.step parts=6 vertices=5709 triangles=5510 accepted=1`，`ParserCodec=1 Persistence=1 Migration=1 Interoperability=1`。
+
+真实结果经CadResultParser解析，存入本人QTemporaryDir临时SQLite，销毁原Repository后用新连接initialize/load，逐件比较完整ID/name/material/shape/position XYZ/bbox XYZ/source名SHA以及所有double vertices/uint32 triangles，均精确一致。重复SHA设备保存明确失败。bearing外包络22×22×约7mm/centre0；motor六件真实名称及非零placement保留。没有修改worker、正常数据库或主树数据接口；该技术互操作不替代原生CAD画面、模拟体验及独立审查。

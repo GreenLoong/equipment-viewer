@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QDataStream>
 #include <QIODevice>
+#include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -228,11 +229,59 @@ bool migration()
     CHECK(t.value("SELECT sql FROM sqlite_schema WHERE name='part'").toString()==partSchema());
     return true;
 }
+bool converterInteroperability(const QStringList &probePaths)
+{
+    QTemporaryDir temp;
+    CHECK(temp.isValid());
+    const QString databasePath = temp.filePath("converter-roundtrip.sqlite");
+    QList<Equipment> expectedEquipment;
+    QList<QList<Part>> expectedParts;
+    {
+        EquipmentRepository repo;
+        CHECK(repo.openDatabase(databasePath)); CHECK(repo.initialize());
+        for (const auto &path : probePaths) {
+            QFile file(path); CHECK(file.open(QIODevice::ReadOnly));
+            CHECK(file.size() > 0 && quint64(file.size()) <= MeshGeometryCodec::maxBytes);
+            Equipment equipment; QList<Part> parts; QString error;
+            if (!CadResultParser::parse(file.readAll(), equipment, parts, error)) {
+                QTextStream(stderr) << path << ": " << error << Qt::endl;
+                return false;
+            }
+            CHECK(repo.saveEquipmentWithParts(equipment, parts));
+            CHECK(!repo.saveEquipmentWithParts(equipment, parts));
+            expectedEquipment.append(equipment); expectedParts.append(parts);
+        }
+    }
+    // 新Repository连接模拟关闭后重新打开；所有字段和double网格必须逐项无损。
+    EquipmentRepository reopened;
+    CHECK(reopened.openDatabase(databasePath)); CHECK(reopened.initialize());
+    for (qsizetype model = 0; model < expectedEquipment.size(); ++model) {
+        QList<Part> actual; CHECK(reopened.loadParts(expectedEquipment[model].id, actual));
+        const auto &expected = expectedParts[model]; CHECK(actual.size() == expected.size());
+        quint64 vertices = 0, triangles = 0;
+        for (qsizetype index = 0; index < expected.size(); ++index) {
+            const Part &a = actual[index], &e = expected[index];
+            CHECK(a.equipmentId == e.equipmentId && a.id == e.id && a.name == e.name
+                  && a.material == e.material && a.shape == "mesh");
+            CHECK(a.positionX == e.positionX && a.positionY == e.positionY && a.positionZ == e.positionZ);
+            CHECK(a.sizeX == e.sizeX && a.sizeY == e.sizeY && a.sizeZ == e.sizeZ && !a.radius && !a.length);
+            CHECK(a.cadSourceName == e.cadSourceName && a.cadSourceSha256 == e.cadSourceSha256);
+            CHECK(a.mesh && a.mesh->vertices == e.mesh->vertices && a.mesh->triangles == e.mesh->triangles);
+            vertices += quint64(a.mesh->vertices.size()); triangles += quint64(a.mesh->triangles.size());
+        }
+        QTextStream(stdout) << "ConverterRoundtrip " << expectedEquipment[model].name
+            << " parts=" << actual.size() << " vertices=" << vertices << " triangles=" << triangles
+            << " accepted=1" << Qt::endl;
+    }
+    return true;
+}
 }
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
     const bool codec=parserAndCodec(), stored=persistence(), upgraded=migration();
-    QTextStream(stdout)<<"ParserCodec="<<codec<<" Persistence="<<stored<<" Migration="<<upgraded<<Qt::endl;
-    return codec&&stored&&upgraded ? 0 : 1;
+    const bool interoperable=converterInteroperability(app.arguments().mid(1));
+    QTextStream(stdout)<<"ParserCodec="<<codec<<" Persistence="<<stored<<" Migration="<<upgraded
+                       <<" Interoperability="<<interoperable<<Qt::endl;
+    return codec&&stored&&upgraded&&interoperable ? 0 : 1;
 }
