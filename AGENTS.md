@@ -4,7 +4,7 @@
 
 - 工程：Qt Widgets + SQLite工业设备查看器；有效规范见docs/engineering-standards.md v1.1，当前状态见docs/working-state.md，实施前必读。
 - 用户已授权全部由Agent开发、连续推进到可交互桌面交付，并用明确标注的模拟反馈迭代；不再要求用户写关键逻辑或逐小功能确认。
-- 当前0.2桌面版本已完成技术交付检查，真实用户体验待反馈。网络/MySQL/Redis是后续单独定义范围的扩展；不得自行启动付费服务、外部发布或删除正常数据。
+- 当前0.3已推送，0.4网络与MySQL已通过代码和使用检查、正在发布；后续按0.5/0.6/0.9/1.0推进。真实用户体验单列；不得自行启动付费服务、外部发布或删除正常数据。
 - 既有真实验收：环境和记录示例2026-10-07通过，F01-1用户2026-10-08明确验收通过。自动检查、独立静态审查、模拟需求验收和真实人工验收分开记录。
 - 已授权局部排查、实现、验证、文档和本地Git检查点自主推进；重大需求/架构变化、破坏性数据操作、外部发布及新增费用按具体影响确认。
 - origin为https://github.com/GreenLoong/equipment-viewer.git；用户已授权远端同步；每个已验证版本推送到origin，最终更新默认main，保留远端历史，禁止force push。
@@ -21,7 +21,7 @@
 ## 环境与入口
 
 - Qt6.11.1 MinGW64、GCC13.1.0、CMake3.30.5、Ninja1.12.1、QSQLITE SQLite3.53.0；OpenGL/OpenGLWidgets已接入，不混用MSVC。
-- scripts/build.ps1：重新配置、构建、部署运行库和九项CTest；PowerShell脚本保留UTF-8 BOM以兼容5.1。
+- scripts/build.ps1：重新配置、构建、部署运行库和当前11项CTest；PowerShell脚本保留UTF-8 BOM以兼容5.1。
 - 启动设备查看器.cmd或scripts/run.ps1 -EquipmentView打开设备；启动示例.cmd仍打开原记录窗口。--database可指定文件，--equipment-check只输出数据后退出。
 - build/bin/scene_tests.exe -platform windows --snapshot-dir <目录>：真实图形验证；offscreen检查是软件回退，不代替原生OpenGL。
 - scripts/package.ps1 -OutputRoot <目录>：只复制运行文件、插件、虚构样例和指南到独立交付目录，不复制正常data或凭证。
@@ -31,14 +31,14 @@
 
 - 额度恢复、换会话或重新分配Agent时先读working-state/handoffs，再核对分支、Git差异和实际工具进程，不能假设旧Agent存活。
 - 及时保存代码和各角色handoff；主管维护汇总状态。验证阶段建立本地提交；额度突发中断不保证还能写最后记录，用最近已保存状态恢复。
-- 基线cbc879f、功能提交8ebe748；最终文档检查点以实际git log为准。当前分支feature/interactive-viewer，按明确授权同步远端。
+- 基线cbc879f、功能提交8ebe748；最终文档检查点以实际git log为准。当前分支feature/release-1.0，按明确授权同步远端。
 - 源码Git检查点与数据库恢复分开。scripts/checkpoint-data.py使用SQLite online backup并验证quick_check，快照在忽略的.recovery/databases。
 - 恢复不得reset --hard、clean或删除数据库；优先修复分支或针对指定提交回退，保留未完成工作。普通数据库复制前关闭所有使用程序。
 - 提交前检查git diff --check、git diff --cached和git status，避免混入本地配置、生成物、数据库或无关修改；提交不等于真实人工验收。
 
 ## 逐版1.0当前执行
 
-- 用户要求逐步更新，当前先0.3，按规范第12节推进0.4/0.5/0.6/0.9/1.0，不能只改版本号或直接宣称1.0。
+- 用户要求逐步更新，当前0.4收尾后0.5，按规范第12节推进0.4/0.5/0.6/0.9/1.0，不能只改版本号或直接宣称1.0。
 - 所有新Agent读取docs/engineering-standards.md v1.1、docs/working-state.md和当前版本功能卡。专职模拟用户与专职review分工必须保留。
 - 授权下载、独立本机服务、持续开发与GitHub推送，不涉及付费或公开部署；保护既有MySQL80/SQLite资料，运行目录和配置不得上传。
 - 当前分支feature/release-1.0。合并origin/main保留初始文档历史，再按阶段推送，不force。不安装未经检查的npm生命周期脚本。

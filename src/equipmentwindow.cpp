@@ -1,6 +1,7 @@
 #include "equipmentwindow.h"
 #include "equipmentcontroller.h"
 #include "sceneview.h"
+#include "collaborationdialog.h"
 
 #include <QComboBox>
 #include <QFile>
@@ -64,6 +65,18 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     auto *importButton = new QPushButton(QStringLiteral("导入设备 JSON"), this);
     importButton->setObjectName(QStringLiteral("importButton"));
     toolbar->addWidget(importButton);
+    auto *sharedButton = new QPushButton(QStringLiteral("团队共享库"), this);
+    sharedButton->setObjectName(QStringLiteral("sharedLibraryButton"));
+    toolbar->addWidget(sharedButton);
+    connect(sharedButton, &QPushButton::clicked, this, [this] {
+        auto *dialog = new CollaborationDialog(controller_, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->onLocalImported = [this] {
+            displayLoadedEquipment();
+            refreshEquipmentChoices();
+        };
+        dialog->open();
+    });
     toolbar->addStretch();
     toolbar->addWidget(equipmentId_);
     layout->addLayout(toolbar);

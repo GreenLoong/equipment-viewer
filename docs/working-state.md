@@ -73,3 +73,12 @@
 
 ## 0.3当前进展
 两条模拟用户需求已修复；10项CTest通过，原生模拟测试两项与4焦点均通过、截图独立查看通过。独立review首轮通过，打包版本参数已加固，正做0.3提交/打包/远端；0.4后端代码已落盘，pure tests通过，MySQL配置/客户端/真实集成尚待实施，未提前标0.4发布。
+
+## 0.4当前未完成
+项目独立MySQL3310已就绪，原MySQL80保留；后端初轮3个review问题已修复并有pure11/11、真实integration1/1。受控API session89956运行旧模块，需在新代码复审后统一重启。Qt ApiClient/CollaborationDialog与共享库入口已落盘但未构建/验证；正在新增网络生命周期和真实两客户端测试。0.3已push main/feature/tagv0.3.0，包已清Qt环境原生启动0、哈希一致；manifest脏状态来自未提交的0.4 API，在0.3Qt包中未包含。不得提前记0.4发布。
+
+## 本次额度恢复后的真实核对
+上轮0.4初始Qt构建实际11CTest通过11.82秒，但未覆盖后续review新发现，不能当缺陷已关闭。3310中断后已不监听，helper读取原标记恢复PID63920，不重建/清库；8765旧API PID59068仍在。backend pool.end拒绝收尾已修pure14与真实integration1过。root已修2xx传输错误检查、QPointer取消快照、queued回调与generation取消已排队成功结果，新增截断/queued取消/首回调销毁client回归，正在验证；0.4未发布。
+
+## 0.4发布检查点准备
+已修review R04-01..06/queued取消，root最新11CTest通过12.08s，纯14/真MySQL1过，模拟用户8场景offscreen/windows均accepted/cleanup1，图独立验收通过，完整0.4独立结论待最终包范围核对。主API已受控停旧session89956，最新session43076运行127:8765；MySQL标记恢复63920。正版本包/远端，0.5尚未写代码。
