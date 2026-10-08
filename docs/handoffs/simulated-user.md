@@ -74,3 +74,25 @@ Node harness已检查源码并执行 `node --check tests/run_shared_user.mjs` �
 最终亲自串行offscreen/windows完整退出0：日志 `build/shared-user-0.5-offscreen-semantic.log` 与 `build/shared-user-0.5-windows.log`。九项主用例及wrongID/part/scope/missingpart/旧取消回调保护全1；真实代理确认201已提交丢响应→相同UUID原payload200、另一客户端已改DTO仍保留不同草稿；真实pause/resume服务重建与SQL核3条批注revision1/3/4及author/updatedBy/精确关联通过。旧0.4用例全通过，owned4表cleanup1，已通知backend ev_test空库释放。
 
 独立查看九张新增Windows图：保存与草稿分区清楚，冲突/断线/错身份红字可读，dirty Esc/titleclose后草稿仍在，刷新后最新版本与旧草稿并存，UTC时间明确，令牌遮蔽，持久化新服务读取正确。无阻断体验问题，不需生产修复。列表长预览可横向滚动，完整正文在保存区；200条外选择/极端窗口尺寸/跨电脑尚未本轮实测。0.5模拟验收通过，非真人、非代码review。所有历史失败及测试修正已落盘feedback0.5。
+
+## 0.6模拟用户准备
+
+主管报告0.5源码检查点d3d720e、包native smoke通过，独立包审查/远端同步由主管继续。本角色已读取现有API契约与 `docs/cache-plan-0.6.md`，新增 `docs/user-feedback-0.6.md` 保存七条有限业务用例：同设备MISS/HIT与MySQL读计数、共享操作回归、缓存断开回源保草稿/几何、重连恢复、批注最新修订必读MySQL、无令牌缓存前401、精确ID不串。
+
+0.6当前只计划，缓存契约/配置待主管冻结，WSL挂起且用户重启许可尚待处理；本角色不restart/shutdown、不启动缓存、不抢ev_test、不改生产或旧通过0.5 tests。收到正式接口后建立独立缓存harness，使用随机namespace/空ev_test守卫和本轮接入故障代理，不能停正常服务或FLUSHALL。性能只报告实际耗时/规模，不以HIT推导一定更快。0.9另做交互包体验。
+
+## 0.9受控恢复脚本待主管全文检查
+
+主管另授权唯一新文件 `tests/verify_mysql_restore.mjs`，已落盘并node --check退出0，尚未执行、不占ev_test。先读取已独审的 `api/tools/backup-mysql.mjs`/preparePrivateOptionFile，再编写本次测试。
+
+脚本核marker/实际datadir/账号/ev_test3310与空库后取得本轮4表所有权；真实API写含中文/引号/斜线/尾空格/点ID设备与批注revision2，关闭本次API后mysqldump指定本轮4表、single-transaction/tz-utc二进制落盘至忽略的 `.recovery/tests/<UTC-随机后缀>`。密码只进排他临时ini，不在argv/log；cleanup失败明确非0。manifest含SHA/字节数，恢复前两次核hash并拒绝数据库创建/切换语句，只有本轮生成的dump可用mysql CLI导回ev_test。
+
+重建API后核精确geometry/DTO、UTC epoch、原UUID幂等返回revision2、旧CAS409不覆盖与显式revision3，finally仍只清本轮annotations/part/equipment/schema_version。dump/partial和manifest保留，不能声称正常库恢复。全程不停止MySQL实例或正常API，不恢复/删除ev_shared。已通知主管首次执行前全文检查；收到检查完成及独占ev_test协调通知后才运行。0.5旧测试未修改。
+
+## 0.9受控恢复已实际通过
+
+主管全文检查并确认脚本SHA256 F4D3C00463686718781E10F2401B115FBDA5A25591EBEB85CB752A44F2EA8064及ev_test为空后，本角色亲自执行 `node tests/verify_mysql_restore.mjs`，显式EV_TEST_CONFIG_FILE，exit0（约1.78秒），accepted=1与cleanup=1都成功。日志 `build/mysql-restore-simulation.log`；未恢复正常库或停止实例。
+
+dump/manifest在 `.recovery/tests/2026-10-08T05-30-45-888Z-c7cfdc59`，6269字节，SHA256 B8CAE4C023BE8DF999C95677164A1DFA9F4CE32738F91E4C6A7BE1A50BC99AAD，独立Get-FileHash与manifest一致。manifest restored/restoreVerified=true，normalDatabaseRestore=false；真实freshAPI精确geometry/设备零件ID/批注rev2与UTC epoch/原UUID幂等/旧CAS409/显式rev3均通过。finally只清本轮4表并查空，已通知root/review，ev_test释放；dump正文没有打印，Git check-ignore两证据都忽略。独立审查仍由review角色判断，不把模拟恢复当正常数据恢复或真人验收。
+
+已读取主管新冻结0.6契约并同步0.6计划，正式MySQL详情读计数从鉴权status取得，批注没有额外计数字段不能虚构；固定Redis6380及测试namespace约束保留。0.6实际Redis尚未运行，WSL不由本角色restart/shutdown；下一步独立缓存harness，旧0.5已过测试仍不修改。

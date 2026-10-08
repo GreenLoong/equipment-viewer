@@ -54,3 +54,19 @@ PUT /api/annotations/:uuid：body{text,editor,expectedRevision}，text≤2000，
 测试：真实ev_test create/persist/关联同名精确IDs/无效关系404/空白与超限400/同requestId幂等及payload冲突/两客户端同revision并发200+409/保留author/UTC时间/服务重建；UI真实操作两用户同批注、冲突草稿保留、刷新和显式重提交、断服后草稿仍在。现有共享harness收尾必须先drop本轮annotations再part/equipment/schema_version，空库guard保留，不能动ev_shared或原服务。
 
 0.5界面批注元信息明确标UTC并显示ISO时间，不使用无标时区本地时间。dirty关闭只取消等待保留窗口，保存或显式放弃后才关闭；杀进程/额度突断不保证未保存内存草稿跨重启。
+
+# 0.6增量：不可变设备缓存（已冻结，尚未运行验收）
+
+只缓存已鉴权且ID验证通过的两种GET设备详情。列表、批注、POST/PUT不缓存；MySQL权威，设备几何仍不可变，404不负缓存。详情DTO保持0.4格式，成功时X-Cache为HIT、MISS或BYPASS：合法缓存且精确ID匹配为HIT；健康缓存缺值/坏值后回源为MISS；disabled、连接/命令失败或容量限制为BYPASS。MISS写缓存失败仍返回原200/MISS，不把已成功业务改报失败。无令牌和无效ID不得访问缓存或增加其计数。
+
+service/test JSON可选redis对象：enabled默认false，configFile='runtime/redis.local.json'（相对于api目录），namespace='geometry-v1'，ttlSeconds=60，connectTimeoutMs=500，commandTimeoutMs=500，reconnectDelayMs=1000，maxPendingCommands=8，maxValueBytes=6291456，closeTimeoutMs=500。不提供或disabled不读取秘密文件/连接Redis；enabled才读取专属忽略配置，host固定127.0.0.1/port6380、密码仅在该文件。GUI不拿Redis凭证，API配置不复制密码。
+
+namespace为1..64个[A-Za-z0-9_-]；TTL1..3600秒，连接/命令/关闭预算50..5000毫秒，重连冷却100..10000毫秒，pending1..32，value上限1..6MiB。配置结构错误拒绝启动；启用后秘密文件缺失或不可用则以config_unavailable降级保留MySQL业务。key含固定前缀、schema2、MySQL数据库、namespace及精确UTF8设备ID的SHA256；测试随机namespace，不FLUSHALL/FLUSHDB，不操作其他key。
+
+官方核心客户端固定@redis/client 6.3.0，安装--ignore-scripts，先检查package/lock和生命周期。disableOfflineQueue、命令队列上限、禁用自动后台重连；共享一次连接尝试，失败后由后续请求按冷却有界重连。连接/命令/关闭超时须真正销毁socket并清队列，不能仅Promise.race留下未完成网络工作。
+
+GET用固定Lua原子检查TYPE/STRLEN及限定长度GET，非string或超过上限定向删除该key而不返回巨型payload；合法尺寸才返回原始JSON。客户端再校验UTF8/JSON/geometry与精确equipmentId。坏值定向DEL、计invalidValues并回源；脚本固定不拼入用户正文。缓存错误、非法值或关闭不得泄密码、key、SQL、请求正文或堆栈。
+
+鉴权GET /api/status返回200 data={service,version,mysql:{ready,equipmentDetailReadAttempts},cache:{enabled,ready,state,hits,misses,bypass,invalidValues,commandErrors,sets,inFlight,lastFailure}}。state=disabled/ready/degraded；lastFailure仅null或connect_timeout/command_timeout/connection_error/invalid_value/capacity/config_unavailable。计数为当前API进程生命周期，每次合法详情lookup只归入一种hit/miss/bypass；sets只计成功SET。equipmentDetailReadAttempts统计实际调用MySQL详情读取的次数，包括失败尝试，不能用MISS数量代替。status的MySQLprobe失败仍200 ready=false；/health保持原数据库不可用503规则。诊断不包含namespace/path/token/password/SQL或缓存key。
+
+验收需真实Redis/HIT/MISS/TTL/非法及巨型值、缓存断开回源与重连、401先于cache、最新批注/旧CAS保持；受控MySQL调用计数和实测延迟分开报告。模拟需求见user-feedback-0.6.md。真实WSL尚未恢复时只能记纯测试/受控网络检查，不能宣布Redis整合通过或发布0.6。

@@ -288,3 +288,23 @@ Qt初轮SHA256：Dialog cpp=2AB1360F5F0190A846D2BBE3AECAE6BBF5A188CDCB06D12B24B6
 主服务备份/迁移：主管报告已有备份后ev_shared正常eq/part为空基线保持、schema2及health up。此实际主库操作由主管执行，本角色未迁移共享库；backup文件/hash已核对但restoreVerified=false、恢复实测未完成的事实继续保留，不宣称完整恢复验证。
 
 下一步：主管0.5包/依赖隔离/敏感文件与manifest提交一致核对后提供metadata，再作包复核。源码检查点明确排除未启用的0.6 runtime工具/cache-plan与后续resource tests；本角色继续独审这些下一阶段准备文件。
+
+## 0.5 最终包发布门槛通过
+
+已只读核对C:/Users/23871/Documents/Codex/2026-10-07/new-chat/outputs/equipment-viewer-0.5.0-20261008-131825目录/ZIP及outputs/0.5包启动验证.png。manifest为0.5.0、sourceCommit=d3d720e8a063a4a24d70fa64c924ed9dfce1ffe8、dirty=true、databaseIncluded=false。dirty为尚未提交0.6准备工具/cache-plan的真实标记，不在桌面包；Qt src/CMake相对d3d无差异。
+
+包EXE、ZIP内实际EXE流、build/bin EXE三者SHA256均177D203D03D6314DB694631FADDC42A0E9721AC27593F14C540087DFE029A629。目录只有1exe/26dll/3json（manifest与两样例）/1cmd/1md，目录和ZIP的sqlite/sqlite3/db/key/pem/local.json/local.ini/.env扫描0；含QtNetwork、qwindows/qsqlite、启动入口、指南与两份虚构样例。独立查看包启动图：模型/清单/共享入口/中文正常；清Qt PATH/plugin后的native smoke0为主管实际执行，本角色未重复启动包。
+
+结论：0.5源码及对应桌面包独立复核通过，已满足本版发布门槛；恢复副本尚未实测、真实用户未验收、跨机器/独立桌面进程未测仍保留。未把Redis/资源准备计入0.5功能。指南“批注范围/提交草稿”是概括措辞，已建议后续与实际“关联零件/新增批注/提交修订(版本N)”同步，非功能阻断。主管报告远端main/feature/tag peeled均d3d，此远端核对执行主体为主管，本角色未推送。
+
+## 0.6 runtime初轮意见与执行边界
+
+已完整读setup-redis.mjs、redis-bridge.mjs、redis-stdio.py和redis-bridge.test.mjs及cache-plan。此阶段只审准备工具，不启用缓存，不调用WSL、setup/stop或真实Redis，不占ev_test。主管已取消自己挂起的wsl --list会话，未shutdown/restart全局WSL；发行版Registry实际Ubuntu-24.04，后端正在按此修正默认值。
+
+R06-01：首版bridge的complete(false)把未确认退出child移出sessions；之后close current为空会成功、maximumConnections不再计实际未确认child。必须保留未确认状态与实际子进程预算，真实close才释放，后续close仍报未确认。已即时通知主管并由backend修正。
+
+执行记录需准确：最初完整读4项pure及bridge哈希2D7D53E11A80A49611B1FDFF9BBCF88019B2E38704577A9670FBA7EBF45DFCC2；本角色开始运行时backend并行修改到08DE版本并增加第五项回归。前4过，第5失败且未结束，未把处理中代码判最终通过/失败。本角色仅Ctrl-C终止自己的session91215（exit1），后续inline替身复现命令没有执行；没有任何真实WSL/Redis/MySQL动作。
+
+主管现通知4文件冻结：setup722DE9…B9D01、bridge5386EE…4CBB3、py6370D5…C584、test6C78F…1F7BF；false保留预算、晚到realclose释放、失败测试t.after收尾及socket EOF排空timer已补，最新5/5为backend报告。本角色下一步重新完整读取冻结范围并独立纯测试后再给工具结论；当前不预写修复通过。
+
+后续0.9准备授权：主管另授权本角色独立tests/reviewer_resource_tests.cpp和tests/measure_resources.ps1，Qt临时库/重复窗与网络/SQL/QObject计数、本测试PID句柄/PrivateBytes暖机批次观察；尚未落盘或运行，不计入0.5。Node堆增长等0.6后实施；数据库恢复先规划，不占ev_test或正常资料。
