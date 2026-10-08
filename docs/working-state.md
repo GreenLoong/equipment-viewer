@@ -18,7 +18,15 @@
 
 最新恢复检查点：主树已合入CAD数据c06bbb9/b8acea2/09225fe/b9c8ae5、图形118e1b4、UI10c0236与Job完整退出修正dd149bc。版本文件暂设0.8.0，尚未发布；GitHub稳定仍0.7。worker88735E2C独审14/14及原mixed负例通过，R08-W01已关闭；受支持电机改Yellow六闭实体，旧NEMA另含开放壳必须拒绝，不交付部分模型。
 
-主树新增cad_user_tests已编译，CPP冻结A639115A；simulated_user_v1正在两平台真实轴承/Yellow操作与资源检查。最新完整CTest15/16通过、cad_import_process line175 self-delete等待失败，UI作者正在诊断，不能记全通过。Node纯回归38/38通过。cad_scene新Yellow软件位置/孔/拾取/标尺专项退出0。review_v1独审UI；cad_ui_r08独占运行库准备脚本，bootstrapping/许可尚待最终复审；root负责CMake、公共文档、构建、Git及包。主树未提交文件保持，正常SQLite未升级/无测试写入。
+本地检查点cbdc651保存完整CAD worker/支持样例与版本文档；.gitattributes将STEP标binary，Git对象SHA与下载原文一致，禁止换行转换改变源身份。8ca9a11仅增加self-delete测试的通知/error诊断，业务没改，原失败日志保留，单目标复验中；无新版远端发布。
+
+两平台cad_user当前A639测试已accepted1：真孔/6位置/单双击隔离/标尺/失败及原NEMA/取消PID0/本地拒CAD发布/旧JSON/重启指纹；5轮资源记录均通过粗门槛，native warm759152640bytes/638handles→末778043392/649，峰806977536，非零泄漏证明。部分QScreen实屏图截断，sim负责修测试取图再验证；原生FBO专项实际完整且samples4。generic软件/native各5×20窗×5loads/40HTTP已逻辑基线回归，源码独审仍待最终覆盖。
+
+正常records.sqlite在一致性快照.recovery/databases/20261009-053034-777459（两个库quick_check均ok）后实际新应用升级成功；与快照每旧列逐行完全一致：demo_records3/equipment1/part3，quick/FK检查通过。F01另库未打开升级。无正常模型或测试数据插入。新的ev_test MySQL恢复核geometry/UTC/CAS/幂等全部接受，6269bytes，SHA b59f19e2967ff36c6cbf6f5701b17cb42d4aae98be9de7b9463881b65ba6aa1b，manifest restoreVerified=true/normalDatabaseRestore=false，清理1；新的真实MySQL完整integration1通过。
+
+主树诊断-only测试8ca9a11单目标重编/默认runtime实际复验退出0，原失败未复现、原因未定，不做无依据的业务改动；仍待最后全CTest及独审。simulated_user_v1修完整屏幕截图和临时CAD备份恢复测试；cad_ui_r08独占runtime两脚本与许可；review_v1独审实际差异。Node38及新MySQL1通过；CAD两平台真实专项通过。root负责集成/CMake/文档/Git/包。各已保存文件保留，正常资料迁移结果见上段。
+
+## 0.8前期开发记录（下列为历史观察，当前状态以上段为准）
 
 0.6已发布v0.6.0/30b5fcc；0.7已发布v0.7.0/3e3bb57，README已由旧0.2主体改为当前0.7并保留docs/history原文。0.7包outputs/equipment-viewer-0.7.0-20261009-001651，EXE80DD310C45247D04127A564FF003CE3B52BDBA110C49D93CD9EA70D05BD40086，manifest源码3e3/dirtytrue仅未来worker未提交；已独核，不含CAD代码/数据/秘密。主source0.7全14CTest16.50/nativeScene与Window退出0，实际FBO4，用户交互反馈已技术验收，非用户再次验收。
 
