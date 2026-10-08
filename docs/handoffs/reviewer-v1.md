@@ -384,3 +384,36 @@ backend另报告同脚本真1/1、完整pure38/38、严格空ev_test旧业务集
 已独立查看outputs/0.6包启动验证.png：原生窗口正常中文、三零件模型、共享入口；主管报告清Qt PATH/plugin环境native smoke退出0，本角色不冒充再次运行smoke。核对时HEAD为30b5，当前仅docs/user-feedback-0.7.md变化，属于后续CAD设计，不改变本包manifest构建时clean事实。
 
 最终发布门槛结论：0.6源码与桌面包独立审查通过，无本版阻断项，可依持续授权推送main/feature并建立v0.6.0。正常API升级/cache ready及无正常库测试写入由主管执行记录，本角色没有停止服务或操作普通库。真实用户体验、复杂模型性能和0.7/0.8尚未实施内容不属于此结论。
+## R07 独审中：R07-01 圆柱次正规径向失真（待修复）
+
+范围为隔离树Scene c27ff641bd97bf6e4fdf6c6ff4cfed98541059e4及未提交Controller/Window，主树0.6不纳入。已实际读取真实反馈规范、图形/模拟用户handoff、Scene与Window测试和原生日志/截图；原生日志报告绘制FBO samples=4，contextFormat=0，正确区分。双击只读取item的值ID并以Window上下文timer延迟清单重建；Controller显式隔离flag、失败加载保留、showAll/成功切换退出逻辑暂未见阻断。
+
+R07-01：src/sceneview.cpp圆柱leftA/leftB/rightA/rightB（581..584行）径向表达式仍先以double求radius*cos/sin，再传long double point。当radius=double denorm_min、length=2*radius时，合法输入通过long double包络/1%float跨度检查，但径向点先量化成0或一个最小double，形成失真几何；例如sin18°应为归一化0.309017却实际为0。bounds与毫米数值仍声称正常圆柱，未满足极端几何一致性。
+
+本角色创建独立临时Qt探针C:/Users/23871/AppData/Local/Temp/reviewer-r07/subnormal.cpp，直接编译当前实际Scene源码，不改业务/共享构建。Qt offscreen真实绘制unit radius1 length2与等比例denorm_min radius/length，模型区（x180..619/y110..469）59153个像素不同；Scene无范围错误且annotations=4；数值radialDoubleFirst=0、radialExtendedFirst=0.309017；探针主动退出2表示复现，result.log和unit/subnormal.png保留。首次编译缺QtSql include只属探针编译配置，补齐后成功运行。
+
+最小建议：乘cos/sin前先将radius提升long double，与现length/box提升策略一致；新增unit圆柱与次正规圆柱等比例几何/实际绘制比较（屏蔽不同单位文字），不能只检查annotation数量。修复后独立复审，不用之前13CTest/次正规box通过替代。当前R07源码待该项关闭，尚未给发布结论。CAD未实现范围不审。
+
+### R07窗口范围独立审查与亲自回归
+
+实际Controller C3E2E1945D16CEB92527E0E2B0DCF263BF440296B8DA83A9ABAA7D95E67DEF30/h C71CF40FD742D882549AA49D4F25AD423DE0B783519742121C800E778CE40CC3；Window AE682A6C6146A1A14E44681880AE1D6596006D278D6D8CDDE848F53953C65948；测试54E627462FE61E44BCC1A017F427BD60C24EB036074B879318B70737ADC5A57A。显式isolationActive不根据剩余可见件数推断，隐藏隔离件可留模式便于后续双击切换，显示第二件/showAll/成功加载退出；失败加载前完整查询保护不变。单击仍仅选中。Window同步读取借用Part只在无嵌套事件的当前调用中使用，双击不捕获item/Part借用；延迟timer以Window为context自动随销毁取消，只在equipmentID匹配时读取当前状态重建，不恢复旧选择/显隐。设备或操作在timer前改变时只重读最新状态，没有旧数据覆盖。
+
+已亲自运行现build/bin/r07_window_tests.exe -platform offscreen --snapshot-dir build/reviewer-r07-window-offscreen，退出0，全部R07_WINDOW字段1。EXE SHA5A621655D6F096B517E64C9D06C113553460236C9DF9B1058884C8346C34AD11，日志build/reviewer-r07-window-offscreen.log。软件投影结果不能代替原生。模拟用户两平台日志全部1、原生FBO samples4，执行主体为模拟用户；本角色独立查看原生02隔离B、03过滤C及06回正保留显隐图，正文与毫米标注一致，短投影明确线未显示。
+
+此窗口范围未发现阻断项，可以保持当前最小实现。全R07仍待R07-01径向次正规修正及复验，不据本段提前记0.7发布或用户再次验收。
+
+### R07-01最小修正独立复核
+
+已读取Scene509324D3173F8528B887AD7C3B552A9FDB3E9A7ED4F1022C1FC9A6C6C0986CF7与test36321604720D77C7C370CD1EA92DE74469FE09B5210AC1D0657124DA350CFE82实际diff：radius先提升long double，四径向顶点乘法均不再先发生double下溢；原长度/包络约束保持。测试实际绘制unit圆柱和等比例次正规圆柱，裁掉不同毫米文字再像素比较，并核对三轴包络毫米/投影端点；能发现原形变而非只检查数值。
+
+本角色亲自用同一临时Qt探针重新直接编译当前Scene（独立subnormal-fixed.exe），实际offscreen退出0；模型区像素差由59153归零、annotations4/无范围错误，result-fixed.log已保留。输出中的radialDoubleFirst=0是探针用来展示原表达式的独立算术对照，并非修正后产品仍用double。R07-01业务缺陷修正独立接受；全R07仍待作者正式新代码两平台回归证据与最终范围核对。
+
+已向主管说明新像素test.copy(modelRegion)的坐标当前为逻辑像素；若高DPI实际image DPR大于1，应按DPR缩放裁剪rect，避免不同毫米文字进入裁剪造成伪失败。该项为测试跨DPI稳健性建议，不是产品业务阻断。
+
+### R07-01关闭与0.7交互源码最终结论
+
+已独立核对作者正式修正证据：build/r07-01-before.log在新像素测试/旧代码上不同像素92415并退出1；新软件与原生日志不同像素均0、完整尺寸/交互测试通过，原scene原生回归退出0，受影响两项CTest通过3.71s。原生报告仍requested4/contextFormat0/真实FBO actual4；独立查看r07-01-native-after/r07-subnormal-cylinder-model.png，模型已恢复20段圆柱形状，与正常比率圆柱一致。此为作者实际运行，本角色另亲自直接编译当前Scene用独立探针确认0差异。
+
+R07-01已关闭。结合本角色实际源码审查、窗口offscreen亲自回归、专职模拟用户两平台控件结果、原生图形/标尺与修后证据，当前R07三维/隔离/窗口范围独立审查通过，无未关闭源码阻断项。可以进入主管集成、最终构建回归和0.7包核对；不把未打包/未推送记为交付完成，真实用户需求来源与自动验收主体仍分别记录。
+
+通过范围为Scene509324/h33A82、test363216、ControllerC3E2/C71C、WindowAE68、窗口test54E6及相应CMake测试接入；尺寸中心截面参考与外包络语义应继续在指南说明。高DPI crop测试建议不影响此本机通过结论，后续若调整测试须再次核实际差异；产品MSAA支持依驱动如实报告。CAD0.8未审/未包含，不将本结论套到新网格或转换流程。

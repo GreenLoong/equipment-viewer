@@ -45,6 +45,7 @@ bool EquipmentController::loadEquipment(const QString &equipmentId)
     parts_ = parts;
     selectedPartId_.clear();
     hiddenPartIds_.clear();
+    isolationActive_ = false;
     return true;
 }
 
@@ -109,6 +110,15 @@ bool EquipmentController::setPartVisible(const QString &partId, bool visible)
         hiddenPartIds_.remove(partId);
     else
         hiddenPartIds_.insert(partId);
+    // 显式显示多个对象后不再是隔离；隐藏隔离件可暂时为空，仍允许双击切换。
+    if (visible && isolationActive_) {
+        for (const Part &part : parts_) {
+            if (part.id != partId && !hiddenPartIds_.contains(part.id)) {
+                isolationActive_ = false;
+                break;
+            }
+        }
+    }
     return true;
 }
 
@@ -129,6 +139,7 @@ bool EquipmentController::isolateSelected()
         return false;
     }
     // 隔离是显式查看操作，可恢复选中对象，但不改变其身份或属性。
+    isolationActive_ = true;
     hiddenPartIds_.clear();
     for (const Part &part : parts_) {
         if (part.id != selectedPartId_)
@@ -141,4 +152,5 @@ void EquipmentController::showAll()
 {
     error_.clear();
     hiddenPartIds_.clear();
+    isolationActive_ = false;
 }

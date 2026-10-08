@@ -35,6 +35,8 @@ public:
     const Part *selectedPart() const;
     /** 返回当前不可见零件ID集合，只读。 */
     const QSet<QString> &hiddenPartIds() const { return hiddenPartIds_; }
+    /** 是否处于显式隔离模式；单击选中隐藏件不改变当前隔离显示。 */
+    bool isIsolationActive() const { return isolationActive_; }
     /** 返回最近操作错误；成功操作清除旧错误。 */
     QString lastError() const { return error_; }
 
@@ -45,5 +47,6 @@ private:
     QList<Part> parts_;
     QString selectedPartId_;
     QSet<QString> hiddenPartIds_;
+    bool isolationActive_ = false;
     QString error_;
 };

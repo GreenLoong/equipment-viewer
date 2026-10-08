@@ -15,6 +15,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QShortcut>
+#include <QTimer>
 #include <QKeySequence>
 #include <QScrollArea>
 #include <QSignalBlocker>
@@ -104,8 +105,9 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     isolateButton_->setObjectName(QStringLiteral("isolateSelectedButton"));
     auto *showAllButton = new QPushButton(QStringLiteral("显示全部"), sceneGroup);
     showAllButton->setObjectName(QStringLiteral("showAllButton"));
-    auto *fitButton = new QPushButton(QStringLiteral("查看全部"), sceneGroup);
+    auto *fitButton = new QPushButton(QStringLiteral("视角回正"), sceneGroup);
     fitButton->setObjectName(QStringLiteral("fitAllButton"));
+    fitButton->setToolTip(QStringLiteral("恢复默认观察方向与缩放"));
     for (auto *button : {hideButton_, isolateButton_, showAllButton, fitButton})
         sceneToolbar->addWidget(button);
     sceneLayout->addLayout(sceneToolbar);
@@ -168,6 +170,28 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     displayProperties();
 
     connect(partsList_, &QListWidget::itemSelectionChanged, this, &EquipmentWindow::selectFromList);
+    connect(partsList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
+        if (!item || !controller_.isIsolationActive() || !controller_.equipment())
+            return;
+        // 只捕获值；信号中的item由清单拥有，重建后立即失效。
+        const QString id = item->data(Qt::UserRole).toString();
+        const QString equipmentId = controller_.equipment()->id;
+        if (id.isEmpty() || !controller_.selectPart(id) || !controller_.isolateSelected()) {
+            showStatus(controller_.lastError(), true);
+            return;
+        }
+        displayProperties();
+        syncScene();
+        showStatus(QStringLiteral("隔离已切换到零件 %1。").arg(id));
+        // 等本次Qt双击事件返回后再删除/创建清单项，避免发信号栈中释放item。
+        QTimer::singleShot(0, this, [this, equipmentId] {
+            if (!controller_.equipment() || controller_.equipment()->id != equipmentId)
+                return;
+            rebuildList();
+            displayProperties();
+            syncScene();
+        });
+    });
     connect(clearSelectionButton_, &QPushButton::clicked, this, &EquipmentWindow::clearSelection);
     // 窗口快捷键覆盖各控件焦点，只清选择，不修改搜索或显隐。
     auto *escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
