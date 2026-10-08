@@ -510,7 +510,15 @@ void CollaborationDialog::saveNote()
 
 void CollaborationDialog::publish()
 {
-    if (!controller_.equipment() || !configure()) return;
+    if (!controller_.equipment()) return;
+    // 现有HTTP协议仅含基础几何，必须在构造文档前拒绝，避免丢失网格。
+    for (const Part &part : controller_.parts()) {
+        if (part.shape == QStringLiteral("mesh")) {
+            status(QStringLiteral("当前设备包含CAD曲面网格；团队共享库暂不支持CAD发布。请在本地查看。"), true);
+            return;
+        }
+    }
+    if (!configure()) return;
     const auto document = deviceDocument(*controller_.equipment(), controller_.parts());
     setBusy(true);
     status(QStringLiteral("正在发布当前设备…"));

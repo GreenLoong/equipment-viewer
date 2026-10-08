@@ -15,6 +15,8 @@ public:
     bool loadEquipment(const QString &equipmentId);
     /** 解析并原子保存新设备；重复ID拒绝，保存后尝试打开。 */
     bool importJson(const QByteArray &json);
+    /** 严格校验CAD网格结果后事务保存，完整读回成功才替换查看状态。 */
+    bool importCadResult(const QByteArray &result);
     /** 按内存ID选择；空ID清除，无效ID拒绝并保留旧选择。 */
     bool selectPart(const QString &partId);
     /** 设置指定零件可见性，失败不改变状态。 */

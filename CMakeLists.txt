@@ -17,6 +17,7 @@ target_link_libraries(equipment_importer PUBLIC equipment_repository)
 add_library(scene_view src/sceneview.cpp src/sceneview.h)
 target_link_libraries(scene_view PUBLIC equipment_repository Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets)
 add_library(equipment_window src/equipmentcontroller.cpp src/equipmentcontroller.h
+    src/cadimportprocess.cpp src/cadimportprocess.h
     src/equipmentwindow.cpp src/equipmentwindow.h src/apiclient.cpp src/apiclient.h
     src/collaborationdialog.cpp src/collaborationdialog.h)
 target_link_libraries(equipment_window PUBLIC equipment_importer scene_view Qt6::Widgets Qt6::Network)
@@ -39,6 +40,10 @@ if(BUILD_TESTING)
     target_link_libraries(cad_repository_tests PRIVATE equipment_repository)
     add_test(NAME cad_repository COMMAND cad_repository_tests)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(cad_import_process_tests tests/cad_import_process_tests.cpp)
+    target_link_libraries(cad_import_process_tests PRIVATE equipment_window Qt6::Test)
+    add_test(NAME cad_import_process COMMAND cad_import_process_tests -platform offscreen)
+    set_tests_properties(cad_import_process PROPERTIES TIMEOUT 60)
     add_executable(demo_tests tests/demo_tests.cpp)
     target_link_libraries(demo_tests PRIVATE record_window Qt6::Test)
     add_executable(equipment_tests tests/equipment_tests.cpp)

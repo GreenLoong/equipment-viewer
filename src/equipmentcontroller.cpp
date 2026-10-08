@@ -1,5 +1,6 @@
 #include "equipmentcontroller.h"
 #include "equipmentimporter.h"
+#include "cadresultparser.h"
 
 EquipmentController::EquipmentController(EquipmentRepository &repository)
     : repository_(repository)
@@ -65,6 +66,25 @@ bool EquipmentController::importJson(const QByteArray &json)
         // 提交成功后读取失败不能声称保存失败，重试导入会触发重复ID。
         error_ = QStringLiteral("设备 %1 已保存，但打开失败：%2。请稍后从设备列表打开。")
             .arg(equipment.id, error_);
+        return false;
+    }
+    return true;
+}
+
+bool EquipmentController::importCadResult(const QByteArray &result)
+{
+    error_.clear();
+    Equipment equipment;
+    QList<Part> parts;
+    if (!CadResultParser::parse(result, equipment, parts, error_))
+        return false;
+    if (!repository_.saveEquipmentWithParts(equipment, parts)) {
+        error_ = QStringLiteral("保存CAD设备失败：%1").arg(repository_.lastError());
+        return false;
+    }
+    if (!loadEquipment(equipment.id)) {
+        error_ = QStringLiteral("CAD设备已保存，但完整打开失败：%1。请稍后从设备列表打开。")
+            .arg(error_);
         return false;
     }
     return true;

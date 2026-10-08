@@ -2,6 +2,7 @@
 #include "equipmentcontroller.h"
 #include "sceneview.h"
 #include "collaborationdialog.h"
+#include "cadimportprocess.h"
 
 #include <QComboBox>
 #include <QFile>
@@ -21,6 +22,8 @@
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QVBoxLayout>
+#include <QFileInfo>
+#include <QCloseEvent>
 
 namespace {
 QLabel *addValue(QFormLayout *layout, const QString &caption, const QString &objectName, QWidget *parent)
@@ -44,7 +47,7 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
       equipmentSelector_(new QComboBox(this)), search_(new QLineEdit(this)),
       partsList_(new QListWidget(this)), scene_(new SceneView(this)),
       prompt_(new QLabel(QStringLiteral("请选择零件"), this)), propertyDetails_(new QWidget(this)),
-      count_(new QLabel(this)), status_(new QLabel(this))
+      count_(new QLabel(this)), status_(new QLabel(this)), cadImport_(new CadImportProcess(this))
 {
     setWindowTitle(QStringLiteral("开目业务模拟 · 设备模型查看器"));
     resize(1320, 820);
@@ -63,10 +66,17 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     equipmentSelector_->setMinimumWidth(230);
     toolbar->addWidget(new QLabel(QStringLiteral("当前设备"), this));
     toolbar->addWidget(equipmentSelector_);
-    auto *importButton = new QPushButton(QStringLiteral("导入设备 JSON"), this);
+    auto *importButton = new QPushButton(QStringLiteral("导入 JSON / STEP"), this);
+    importButton_ = importButton;
     importButton->setObjectName(QStringLiteral("importButton"));
     toolbar->addWidget(importButton);
+    cadCancelButton_ = new QPushButton(QStringLiteral("取消CAD导入"), this);
+    cadCancelButton_->setObjectName(QStringLiteral("cadCancelButton"));
+    cadCancelButton_->setEnabled(false);
+    toolbar->addWidget(cadCancelButton_);
+    connect(cadCancelButton_, &QPushButton::clicked, this, [this] { cancelCadImport(); });
     auto *sharedButton = new QPushButton(QStringLiteral("团队共享库"), this);
+    sharedButton_ = sharedButton;
     sharedButton->setObjectName(QStringLiteral("sharedLibraryButton"));
     toolbar->addWidget(sharedButton);
     connect(sharedButton, &QPushButton::clicked, this, [this] {
@@ -133,6 +143,7 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     partName_ = addValue(basicLayout, QStringLiteral("名称"), QStringLiteral("partName"), propertyDetails_);
     material_ = addValue(basicLayout, QStringLiteral("材料"), QStringLiteral("material"), propertyDetails_);
     shape_ = addValue(basicLayout, QStringLiteral("形状"), QStringLiteral("shape"), propertyDetails_);
+    cadSource_ = addValue(basicLayout, QStringLiteral("CAD来源 / SHA256"), QStringLiteral("cadSource"), propertyDetails_);
     detailsLayout->addLayout(basicLayout);
     auto *positionGroup = new QGroupBox(QStringLiteral("中心位置（毫米）"), propertyDetails_);
     positionGroup->setObjectName(QStringLiteral("positionGroup"));
@@ -213,7 +224,7 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     });
     connect(importButton, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("导入设备资料"),
-            QString(), QStringLiteral("设备资料 (*.json)"));
+            QString(), QStringLiteral("设备资料 (*.json *.step *.stp);;CAD STEP (*.step *.stp);;设备 JSON (*.json)"));
         if (!path.isEmpty())
             importFile(path);
     });
@@ -267,6 +278,80 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     };
 }
 
+EquipmentWindow::~EquipmentWindow()
+{
+    closing_ = true;
+    // 子QObject在QWidget基类销毁时才释放；显式提前取消，回调不能接触已析构成员。
+    delete cadImport_;
+    cadImport_ = nullptr;
+}
+
+void EquipmentWindow::closeEvent(QCloseEvent *event)
+{
+    closing_ = true;
+    if (!cancelCadImport()) {
+        closing_ = false;
+        event->ignore();
+        showStatus(QStringLiteral("CAD进程退出尚未确认，请稍后重试关闭。"), true);
+        return;
+    }
+    QWidget::closeEvent(event);
+}
+
+bool EquipmentWindow::cadImportInProgress() const
+{
+    return cadBusy_;
+}
+
+void EquipmentWindow::setCadBusy(bool busy)
+{
+    cadBusy_ = busy;
+    importButton_->setEnabled(!busy);
+    cadCancelButton_->setEnabled(busy);
+    // 转换期间保留当前设备的交互；禁止其他导入入口竞争提交新设备。
+    sharedButton_->setEnabled(!busy);
+}
+
+bool EquipmentWindow::cancelCadImport()
+{
+    if (!cadImport_) return true;
+    const bool hadWork = cadImport_->isBusy() || cadCancelButton_->isEnabled();
+    const bool stopped = cadImport_->cancel();
+    if (!stopped && !closing_) showStatus(cadImport_->lastError(), true);
+    else if (hadWork && !closing_)
+        showStatus(QStringLiteral("CAD导入已取消；原设备和资料保留。"));
+    setCadBusy(cadImport_->isBusy());
+    return stopped;
+}
+
+bool EquipmentWindow::importCadFile(const QString &filePath)
+{
+    if (closing_) return false;
+    if (cadBusy_) {
+        showStatus(QStringLiteral("CAD转换或资料提交正在进行，请等待或取消后再导入。"), true);
+        return false;
+    }
+    const bool started = cadImport_->start(filePath, [this](QByteArray bytes, QString error) {
+        if (closing_) return;
+        setCadBusy(false);
+        if (!error.isEmpty()) { showStatus(error, true); return; }
+        if (!controller_.importCadResult(bytes)) {
+            const QString message = controller_.lastError();
+            refreshEquipmentChoices();
+            showStatus(message, true);
+            return;
+        }
+        displayLoadedEquipment();
+        if (refreshEquipmentChoices())
+            showStatus(QStringLiteral("CAD曲面网格已导入并保存；尺寸为全局外包络，非制造标注。"));
+    });
+    if (!started) { showStatus(cadImport_->lastError(), true); return false; }
+    // 进程结束到排队业务回调完成之前也属于导入，不能在此间隙重入其他导入。
+    setCadBusy(true);
+    showStatus(QStringLiteral("正在后台转换CAD，可继续旋转和查看当前设备；最长120秒。"));
+    return true;
+}
+
 bool EquipmentWindow::refreshEquipmentChoices()
 {
     QList<Equipment> equipment;
@@ -310,6 +395,10 @@ bool EquipmentWindow::loadEquipment(const QString &equipmentId)
 
 bool EquipmentWindow::importData(const QByteArray &json)
 {
+    if (cadImportInProgress()) {
+        showStatus(QStringLiteral("CAD转换正在进行，请等待或取消后再导入。"), true);
+        return false;
+    }
     if (json.size() > maximumFileSize) {
         showStatus(QStringLiteral("文件超过 5 MiB，请拆分设备资料后再导入。"), true);
         return false;
@@ -329,6 +418,9 @@ bool EquipmentWindow::importData(const QByteArray &json)
 
 bool EquipmentWindow::importFile(const QString &filePath)
 {
+    const QString suffix = QFileInfo(filePath).suffix().toLower();
+    if (suffix == QStringLiteral("step") || suffix == QStringLiteral("stp"))
+        return importCadFile(filePath);
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         showStatus(QStringLiteral("无法打开设备文件：%1").arg(file.errorString()), true);
@@ -424,10 +516,15 @@ void EquipmentWindow::displayProperties()
 {
     // 同时清空被隐藏的字段，保证形状切换和清除选择不会残留旧资料。
     for (QLabel *label : {partId_, partName_, material_, shape_, positionX_, positionY_, positionZ_,
-                         sizeX_, sizeY_, sizeZ_, radius_, length_})
+                         sizeX_, sizeY_, sizeZ_, radius_, length_, cadSource_})
         label->clear();
     boxDimensions_->hide();
     cylinderDimensions_->hide();
+    boxDimensions_->setTitle(QStringLiteral("长方体尺寸（毫米）"));
+    auto *positionGroup = findChild<QGroupBox *>(QStringLiteral("positionGroup"));
+    positionGroup->setTitle(QStringLiteral("中心位置（毫米）"));
+    cadSource_->hide();
+    cadSource_->setToolTip(QString());
     const Part *part = controller_.selectedPart();
     prompt_->setVisible(!part);
     propertyDetails_->setVisible(part != nullptr);
@@ -441,8 +538,17 @@ void EquipmentWindow::displayProperties()
     positionX_->setText(number(part->positionX));
     positionY_->setText(number(part->positionY));
     positionZ_->setText(number(part->positionZ));
-    if (part->shape == QStringLiteral("box")) {
-        shape_->setText(QStringLiteral("长方体"));
+    if (part->shape == QStringLiteral("box") || part->shape == QStringLiteral("mesh")) {
+        const bool mesh = part->shape == QStringLiteral("mesh");
+        shape_->setText(mesh ? QStringLiteral("CAD曲面网格") : QStringLiteral("长方体"));
+        if (mesh) {
+            boxDimensions_->setTitle(QStringLiteral("全局XYZ外包络（毫米，非制造标注）"));
+            positionGroup->setTitle(QStringLiteral("全局外包络中心（毫米）"));
+            cadSource_->setText(QStringLiteral("%1\nSHA256: %2…")
+                .arg(part->cadSourceName, part->cadSourceSha256.left(16)));
+            cadSource_->setToolTip(part->cadSourceSha256);
+            cadSource_->show();
+        }
         sizeX_->setText(dimension(part->sizeX));
         sizeY_->setText(dimension(part->sizeY));
         sizeZ_->setText(dimension(part->sizeZ));
