@@ -1,0 +1,3 @@
+# 保留外部CAD原始字节和来源SHA，禁止checkout换行转换或代码空白整理。
+*.step binary
+*.stp binary

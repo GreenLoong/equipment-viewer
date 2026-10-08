@@ -46,7 +46,7 @@ GPU资源在有效上下文中清理；清理先断开上下文销毁连接，�
 
 ## 验证与恢复
 
-九项CTest覆盖环境、原记录、持久化、属性、导入、场景、完整工作流和两种窗口启动。原生图形单独运行验证，不能用offscreen替代。独立审查对应实际文件与功能提交8ebe748；真实用户体验尚未验收。
+当前测试目标和运行结果以CMakeLists.txt与docs/releases中的逐版记录为准。原生图形单独运行验证，不能用offscreen替代。真实用户体验与技术、模拟验收分别记录。
 
 恢复先读AGENTS、docs/working-state.md和handoffs，再查实际Git状态。基线cbc879f与功能8ebe748为本地检查点；数据库快照在忽略的.recovery/databases。Git不恢复运行数据库，普通数据库复制前关闭所有使用程序。
 
@@ -65,3 +65,11 @@ EquipmentWindow打开拥有独立ApiClient的CollaborationDialog。Qt Network异
 修改失败保护看src/collaborationdialog.cpp；网络生命周期看src/apiclient.cpp；HTTP鉴权/大小/截止看api/src/server.mjs；MySQL事务/结构迁移看api/src/repository.mjs；批注字段与指纹看api/src/annotations.mjs。客户端不持有MySQL密码，配置不上传。
 
 MySQL迁移从验证通过的v1增建annotations，再验证结构并更新schema marker；DDL可能隐式提交，中断后重入，不靠删除数据升级。执行前保存独立一致性备份。源代码回退不能撤销数据迁移，恢复必须单独验证。
+
+## STEP与网格链路（0.8）
+
+Window.importFile按扩展名分流 → CadImportProcess启动显式私有Python及OCP转换器 → 受限结果文件 → CadResultParser完整校验 → Controller调用Repository事务保存 → 重新加载内存和Scene。转换等待异步；Windows自有Job从进程创建时附加内存和退出约束，确认全部子孙结束再消费结果/清理目录。未知退出状态保留忙状态和临时资料，取消可重试。
+
+tools/cad/convert_step.py检查整份拓扑，拒绝独立开放几何，累计装配变换并转换毫米。meshgeometry.cpp校验局部顶点、三角索引与真实引用包络；EVM1二进制保存不可变网格。Repository先读长度和头部核累计预算，再读取BLOB，避免很多合法大网格使进程无界占用。已知旧SQLite结构事务迁移并核对行数、外键和完整性；未知结构报错保留。
+
+Scene以position+localVertex画真实三角面，并复用毫米标尺、拾取与显隐。共享std::shared_ptr<const MeshGeometry>不借用可失效Part。CAD本地发布明确拒绝，旧HTTP基础几何契约继续有效。私有运行库准备见tools/cad/setup_runtime.py；构建/交付复制由scripts/sync-cad-runtime.ps1执行，第三方许可随包保存。

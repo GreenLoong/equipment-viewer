@@ -16,6 +16,10 @@
 
 ## 当前进行0.8（本节优先于后方保留历史）
 
+最新恢复检查点：主树已合入CAD数据c06bbb9/b8acea2/09225fe/b9c8ae5、图形118e1b4、UI10c0236与Job完整退出修正dd149bc。版本文件暂设0.8.0，尚未发布；GitHub稳定仍0.7。worker88735E2C独审14/14及原mixed负例通过，R08-W01已关闭；受支持电机改Yellow六闭实体，旧NEMA另含开放壳必须拒绝，不交付部分模型。
+
+主树新增cad_user_tests已编译，CPP冻结A639115A；simulated_user_v1正在两平台真实轴承/Yellow操作与资源检查。最新完整CTest15/16通过、cad_import_process line175 self-delete等待失败，UI作者正在诊断，不能记全通过。Node纯回归38/38通过。cad_scene新Yellow软件位置/孔/拾取/标尺专项退出0。review_v1独审UI；cad_ui_r08独占运行库准备脚本，bootstrapping/许可尚待最终复审；root负责CMake、公共文档、构建、Git及包。主树未提交文件保持，正常SQLite未升级/无测试写入。
+
 0.6已发布v0.6.0/30b5fcc；0.7已发布v0.7.0/3e3bb57，README已由旧0.2主体改为当前0.7并保留docs/history原文。0.7包outputs/equipment-viewer-0.7.0-20261009-001651，EXE80DD310C45247D04127A564FF003CE3B52BDBA110C49D93CD9EA70D05BD40086，manifest源码3e3/dirtytrue仅未来worker未提交；已独核，不含CAD代码/数据/秘密。主source0.7全14CTest16.50/nativeScene与Window退出0，实际FBO4，用户交互反馈已技术验收，非用户再次验收。
 
 0.8数据树.runtime/r08-cad-data（codex/r08-cad-data）：提交a15d091/4595142/e23c952/62f2c64，R08-01读库累计预算前置、R08-02真实引用网格双边近似包络、R08-03 SHA终换行已修/独审接受。真实轴承与电机协议→SQLite→重启完整互通；正常库未升级，合并与真实迁移先快照。
