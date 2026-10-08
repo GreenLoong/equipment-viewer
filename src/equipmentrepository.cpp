@@ -8,6 +8,7 @@
 #include <QSqlQuery>
 #include <QUuid>
 #include <QVariant>
+#include <QRegularExpression>
 #include <cmath>
 
 namespace {
@@ -27,7 +28,7 @@ QString equipmentSchema()
         .arg(nonBlank(QStringLiteral("id")), nonBlank(QStringLiteral("name")));
 }
 
-QString partSchema()
+QString legacyPartSchema()
 {
     return QStringLiteral(
         "CREATE TABLE part ("
@@ -53,6 +54,28 @@ QString partSchema()
         "AND size_x IS NULL AND size_y IS NULL AND size_z IS NULL))) STRICT")
         .arg(nonBlank(QStringLiteral("equipment_id")), nonBlank(QStringLiteral("id")),
              nonBlank(QStringLiteral("name")), nonBlank(QStringLiteral("material")));
+}
+
+QString partSchema()
+{
+    QString sql = legacyPartSchema();
+    sql.replace("shape IN ('box','cylinder')", "shape IN ('box','cylinder','mesh')");
+    sql.replace("radius REAL, length REAL, ",
+                "radius REAL, length REAL, mesh_blob BLOB, cad_source_name TEXT, cad_source_sha256 TEXT, ");
+    sql.replace("AND radius IS NULL AND length IS NULL) ",
+                "AND radius IS NULL AND length IS NULL AND mesh_blob IS NULL "
+                "AND cad_source_name IS NULL AND cad_source_sha256 IS NULL) ");
+    sql.replace("AND size_x IS NULL AND size_y IS NULL AND size_z IS NULL))) STRICT",
+        "AND size_x IS NULL AND size_y IS NULL AND size_z IS NULL AND mesh_blob IS NULL "
+        "AND cad_source_name IS NULL AND cad_source_sha256 IS NULL) "
+        "OR (shape = 'mesh' AND size_x IS NOT NULL AND size_y IS NOT NULL AND size_z IS NOT NULL "
+        "AND size_x > 0 AND size_y > 0 AND size_z > 0 AND size_x <= 1.7976931348623157e308 "
+        "AND size_y <= 1.7976931348623157e308 AND size_z <= 1.7976931348623157e308 "
+        "AND radius IS NULL AND length IS NULL AND mesh_blob IS NOT NULL "
+        "AND length(mesh_blob) BETWEEN 12 AND 67108864 AND cad_source_name IS NOT NULL "
+        "AND %1 AND cad_source_sha256 IS NOT NULL AND length(cad_source_sha256) = 64 "
+        "AND cad_source_sha256 NOT GLOB '*[^0-9a-fA-F]*'))) STRICT");
+    return sql.arg(nonBlank(QStringLiteral("cad_source_name")));
 }
 
 QVariant nullable(const std::optional<double> &value)
@@ -187,13 +210,17 @@ bool EquipmentRepository::checkExistingSchema()
         return insertEquipmentWithParts(
             {QStringLiteral("EQ-001"), QStringLiteral("输送机构")}, sampleParts());
     }
-    // 首版仅接受本版本建表定义，结构缺失或约束变化不做自动修复或补种。
+    // 仅允许精确已知旧定义升级；SQLite重命名会给表名加引号，兼容其确定的DDL结果。
+    QString partDefinition = schema.value(QStringLiteral("part"));
+    partDefinition.replace(QStringLiteral("CREATE TABLE \"part\""), QStringLiteral("CREATE TABLE part"));
     if (schema.size() != 2
         || schema.value(QStringLiteral("equipment")) != equipmentSchema()
-        || schema.value(QStringLiteral("part")) != partSchema()) {
+        || (partDefinition != partSchema() && partDefinition != legacyPartSchema())) {
         error_ = QStringLiteral("数据库结构异常：equipment/part 定义与 F01-1 不一致，保留原文件。 ");
         return false;
     }
+    if (partDefinition == legacyPartSchema() && !migratePartSchema())
+        return false;
     if (!query.exec(QStringLiteral("PRAGMA quick_check"))) {
         error_ = QStringLiteral("检查数据库完整性失败：%1").arg(query.lastError().text());
         return false;
@@ -232,14 +259,88 @@ bool EquipmentRepository::initialize()
         error_ = QStringLiteral("数据库未打开，无法初始化。");
         return false;
     }
-    // 先取得写锁，两个进程同时首次启动时也不会各自判断为未初始化。
-    if (!execute(QStringLiteral("BEGIN IMMEDIATE"), QStringLiteral("开始初始化事务失败")))
+    // SQLite要求在事务外切换外键；迁移后无论成功或失败都恢复并核实。
+    if (!setForeignKeys(false))
         return false;
-    if (!checkExistingSchema())
-        return rollback();
-    if (!execute(QStringLiteral("COMMIT"), QStringLiteral("提交初始化事务失败")))
-        return rollback();
-    initialized_ = true;
+    if (!execute(QStringLiteral("BEGIN IMMEDIATE"), QStringLiteral("开始初始化事务失败")))
+        return setForeignKeys(true) && false;
+    bool success = checkExistingSchema();
+    if (success)
+        success = execute(QStringLiteral("COMMIT"), QStringLiteral("提交初始化事务失败"));
+    if (!success)
+        rollback();
+    const QString operationError = error_;
+    if (database_.isOpen() && !setForeignKeys(true)) {
+        error_ = operationError + QStringLiteral("；") + error_;
+        database_.close();
+        return false;
+    }
+    error_ = operationError;
+    initialized_ = success;
+    return success;
+}
+
+bool EquipmentRepository::setForeignKeys(bool enabled)
+{
+    if (!execute(enabled ? QStringLiteral("PRAGMA foreign_keys=ON")
+                         : QStringLiteral("PRAGMA foreign_keys=OFF"), QStringLiteral("切换外键失败")))
+        return false;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral("PRAGMA foreign_keys")) || !query.next()
+        || query.value(0).toInt() != int(enabled)) {
+        error_ = QStringLiteral("外键模式未按要求切换。");
+        return false;
+    }
+    return true;
+}
+
+bool EquipmentRepository::migratePartSchema()
+{
+    QSqlQuery query(database_);
+    const QString temporaryName = QStringLiteral("__ev_part_v2");
+    if (!query.exec(QStringLiteral("SELECT name FROM sqlite_schema WHERE name='__ev_part_v2' "
+                                   "UNION ALL SELECT name FROM sqlite_temp_schema WHERE name='__ev_part_v2'"))
+        || query.next()) {
+        error_ = QStringLiteral("迁移临时表名冲突或结构读取失败，保留原资料。");
+        return false;
+    }
+    QStringList auxiliarySql;
+    if (!query.exec(QStringLiteral("SELECT sql FROM sqlite_schema WHERE tbl_name='part' "
+                                   "AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name"))) {
+        error_ = QStringLiteral("读取旧索引/触发器失败：%1").arg(query.lastError().text());
+        return false;
+    }
+    while (query.next()) auxiliarySql.append(query.value(0).toString());
+    if (query.lastError().isValid()) {
+        error_ = QStringLiteral("读取旧索引/触发器失败。");
+        return false;
+    }
+    query.finish();
+    auto countRows = [&query](const QString &table, qint64 &count) {
+        if (!query.exec(QStringLiteral("SELECT count(*) FROM %1").arg(table)) || !query.next()) return false;
+        count = query.value(0).toLongLong(); query.finish(); return true;
+    };
+    qint64 originalCount = 0, migratedCount = 0;
+    if (!countRows(QStringLiteral("part"), originalCount)) {
+        error_ = QStringLiteral("读取旧零件行数失败。"); return false;
+    }
+    QString ddl = partSchema();
+    ddl.replace("CREATE TABLE part", "CREATE TABLE " + temporaryName);
+    const QString fields = QStringLiteral("rowid,equipment_id,id,name,material,shape,position_x,"
+        "position_y,position_z,size_x,size_y,size_z,radius,length");
+    // 已知canonical表必有rowid，显式复制以保护外部索引/触发器所依赖的身份。
+    if (!execute(ddl, QStringLiteral("创建升级零件表失败"))
+        || !execute(QStringLiteral("INSERT INTO %1(%2) SELECT %2 FROM part").arg(temporaryName, fields),
+                    QStringLiteral("复制旧零件失败"))
+        || !countRows(temporaryName, migratedCount) || migratedCount != originalCount) {
+        if (error_.isEmpty()) error_ = QStringLiteral("升级零件行数不一致。");
+        return false;
+    }
+    if (!execute(QStringLiteral("DROP TABLE part"), QStringLiteral("替换旧零件表失败"))
+        || !execute(QStringLiteral("ALTER TABLE %1 RENAME TO part").arg(temporaryName),
+                    QStringLiteral("命名升级零件表失败"))) return false;
+    for (const auto &sql : auxiliarySql)
+        if (!execute(sql, QStringLiteral("恢复索引/触发器失败"))) return false;
     return true;
 }
 
@@ -259,6 +360,12 @@ bool EquipmentRepository::validate(const Equipment &equipment, const QList<Part>
         return false;
     }
     QSet<QString> ids;
+    quint64 vertices = 0, triangles = 0;
+    qsizetype meshParts = 0;
+    if (parts.size() > 10000) {
+        error_ = QStringLiteral("设备零件数超过10000。");
+        return false;
+    }
     for (const Part &part : parts) {
         if (part.equipmentId != equipment.id || part.id.trimmed().isEmpty()
             || part.name.trimmed().isEmpty() || part.material.trimmed().isEmpty()
@@ -269,13 +376,35 @@ bool EquipmentRepository::validate(const Equipment &equipment, const QList<Part>
         ids.insert(part.id);
         const bool validShape =
             (part.shape == QStringLiteral("box") && positive(part.sizeX)
-             && positive(part.sizeY) && positive(part.sizeZ) && !part.radius && !part.length)
+             && positive(part.sizeY) && positive(part.sizeZ) && !part.radius && !part.length
+             && !part.mesh && part.cadSourceName.isEmpty() && part.cadSourceSha256.isEmpty())
             || (part.shape == QStringLiteral("cylinder") && positive(part.radius)
-                && positive(part.length) && !part.sizeX && !part.sizeY && !part.sizeZ);
+                && positive(part.length) && !part.sizeX && !part.sizeY && !part.sizeZ
+                && !part.mesh && part.cadSourceName.isEmpty() && part.cadSourceSha256.isEmpty())
+            || (part.shape == QStringLiteral("mesh") && positive(part.sizeX)
+                && positive(part.sizeY) && positive(part.sizeZ) && !part.radius && !part.length
+                && part.mesh && !part.cadSourceName.trimmed().isEmpty()
+                && QRegularExpression(QStringLiteral("^[0-9a-fA-F]{64}$"))
+                       .match(part.cadSourceSha256).hasMatch());
         if (!validShape || !std::isfinite(part.positionX) || !std::isfinite(part.positionY)
             || !std::isfinite(part.positionZ)) {
             error_ = QStringLiteral("零件 %1 的形状、尺寸或位置无效。").arg(part.id);
             return false;
+        }
+        if (part.mesh) {
+            ++meshParts;
+            vertices += quint64(part.mesh->vertices.size());
+            triangles += quint64(part.mesh->triangles.size());
+            QString meshError;
+            if (meshParts > 1000 || vertices > MeshGeometryCodec::maxVertices
+                || triangles > MeshGeometryCodec::maxTriangles
+                || !MeshGeometryCodec::validate(*part.mesh, meshError)
+                || !MeshGeometryCodec::validateBounds(*part.mesh,
+                    {*part.sizeX, *part.sizeY, *part.sizeZ},
+                    {part.positionX, part.positionY, part.positionZ}, meshError)) {
+                error_ = QStringLiteral("零件 %1 的CAD网格无效或超过合计限制：%2").arg(part.id, meshError);
+                return false;
+            }
         }
     }
     return true;
@@ -298,7 +427,8 @@ bool EquipmentRepository::insertEquipmentWithParts(const Equipment &equipment, c
     }
     if (!query.prepare(QStringLiteral(
             "INSERT INTO part(equipment_id,id,name,material,shape,position_x,position_y,"
-            "position_z,size_x,size_y,size_z,radius,length) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"))) {
+            "position_z,size_x,size_y,size_z,radius,length,mesh_blob,cad_source_name,cad_source_sha256) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"))) {
         error_ = QStringLiteral("准备零件写入失败：%1").arg(query.lastError().text());
         return false;
     }
@@ -316,6 +446,12 @@ bool EquipmentRepository::insertEquipmentWithParts(const Equipment &equipment, c
         query.bindValue(10, nullable(part.sizeZ));
         query.bindValue(11, nullable(part.radius));
         query.bindValue(12, nullable(part.length));
+        QByteArray blob;
+        if (part.mesh && !MeshGeometryCodec::encode(*part.mesh, blob, error_))
+            return false;
+        query.bindValue(13, part.mesh ? QVariant(blob) : QVariant(QMetaType::fromType<QByteArray>()));
+        query.bindValue(14, part.mesh ? QVariant(part.cadSourceName) : QVariant(QMetaType::fromType<QString>()));
+        query.bindValue(15, part.mesh ? QVariant(part.cadSourceSha256) : QVariant(QMetaType::fromType<QString>()));
         if (!query.exec()) {
             error_ = QStringLiteral("写入零件 %1/%2 失败：%3")
                 .arg(part.equipmentId, part.id, query.lastError().text());
@@ -375,7 +511,8 @@ bool EquipmentRepository::loadParts(const QString &equipmentId, QList<Part> &par
     QSqlQuery query(database_);
     if (!query.prepare(QStringLiteral(
             "SELECT equipment_id,id,name,material,shape,position_x,position_y,position_z,"
-            "size_x,size_y,size_z,radius,length FROM part WHERE equipment_id = ? ORDER BY id"))) {
+            "size_x,size_y,size_z,radius,length,mesh_blob,cad_source_name,cad_source_sha256 "
+            "FROM part WHERE equipment_id = ? ORDER BY id"))) {
         error_ = QStringLiteral("准备零件查询失败：%1").arg(query.lastError().text());
         return false;
     }
@@ -392,6 +529,20 @@ bool EquipmentRepository::loadParts(const QString &equipmentId, QList<Part> &par
                        optionalValue(query.value(8)), optionalValue(query.value(9)),
                        optionalValue(query.value(10)), optionalValue(query.value(11)),
                        optionalValue(query.value(12))});
+        Part &part = result.last();
+        if (part.shape == QStringLiteral("mesh")) {
+            auto mesh = std::make_shared<MeshGeometry>();
+            if (!MeshGeometryCodec::decode(query.value(13).toByteArray(), *mesh, error_)) {
+                error_ = QStringLiteral("零件 %1/%2 的网格读取失败：%3").arg(equipmentId, part.id, error_);
+                return false;
+            }
+            part.mesh = std::move(mesh);
+            part.cadSourceName = query.value(14).toString();
+            part.cadSourceSha256 = query.value(15).toString();
+        } else if (!query.value(13).isNull() || !query.value(14).isNull() || !query.value(15).isNull()) {
+            error_ = QStringLiteral("基本几何零件 %1 含意外CAD数据。").arg(part.id);
+            return false;
+        }
     }
     if (query.lastError().isValid()) {
         error_ = QStringLiteral("读取设备 %1 的零件失败：%2").arg(equipmentId, query.lastError().text());

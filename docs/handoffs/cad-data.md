@@ -1,0 +1,26 @@
+# 0.8 CAD数据工程交接
+
+2026-10-08；隔离树 `.runtime/r08-cad-data`，分支 `codex/r08-cad-data`，基线 `30b5fcc`。只修改授权数据文件及CMake源/测试注册；复制来的user-feedback修改保留且不纳入本人提交。
+
+## 公共接口
+
+- `MeshGeometry`：`QList<std::array<double,3>> vertices`、`QList<std::array<quint32,3>> triangles`，局部毫米坐标。
+- `Part`追加`std::shared_ptr<const MeshGeometry> mesh`、`QString cadSourceName/cadSourceSha256`，旧aggregate初始化兼容。
+- `MeshGeometryCodec::validate/encode/decode`均bool返回，可读QString错误；编解码失败不改变输出。`validateBounds(mesh,size,position,error)`核正尺寸、局部bbox容差和世界坐标有限。
+- `CadResultParser::parse(bytes,equipment,parts,error)`静态接口；严格协议/字段/UTF8、SHA64hex、实体与合计资源、网格拓扑、bbox校验；成功才替换输出。设备ID为`CAD-`+完整规范化小写SHA，设备名为basename。
+
+## 行为与导读
+
+`meshgeometry.cpp`以EVM1魔法+两个little-endian uint32计数+doubleXYZ+uint32indices编码；QDataStream显式Qt6_5、LittleEndian、DoublePrecision。decode分配前计算64位长度并检查64MiB、600k顶点、400k三角限制，不使用压缩。校验拒绝非有限点、越界/重复索引、共线/零面积三角形；叉乘前坐标归一化避免大值中间溢出。
+
+`equipmentrepository.cpp`扩展明确mesh CHECK及nullable BLOB/source字段；基本几何字段与CAD字段互斥。save同一事务保存几何/source。load完整decode/validate后返回。CAD合计≤1000件/600k顶点/400k三角，基础几何仍可≤10000件。
+
+升级只接受30b5fcc精确canonical旧equipment/part定义；已知new canonical与SQLite重命名形成的quoted-table DDL也接受。事务外关闭/核查外键，BEGIN IMMEDIATE锁内建立`__ev_part_v2`，逐字段复制旧行含rowid，核行数，替换旧表，重建原索引/trigger SQL，quick_check及foreign_key_check，COMMIT后恢复/核查外键。失败ROLLBACK，保留库和原错误，不按行数补种。主/临时schema同名迁移表拒绝覆盖；不使用writable_schema。
+
+## 实际验证
+
+先全文检查scripts/build.ps1，再执行独立树fresh构建（Qt6.11.1 MinGW13、CMake/Ninja）。初次完整构建成功，13/13 CTest通过16.82秒；含原12项记录/CRUD/JSON/GUI/Scene/网络回归与新增cad_repository。
+
+新增测试仅QTemporaryDir库：严格parser失败保留、EVM1长度/计数/NaN/索引/退化边界、bbox、mesh重启持久、坏BLOB拒绝；旧canonical含引号ID、box/cylinder全部字段、rowid42/99、index/trigger、两次initialize；name碰撞、TEMP碰撞、读锁制造COMMIT失败并核实DDL/数据回滚与外键恢复。补充后增量完整构建成功且无新增编译警告，最终13/13 CTest通过14.28秒，cad_repository通过1.45秒。提交前diff --check、cached、status已检查。
+
+未访问正常SQLite；正常库一致性快照及实际集成由主管负责。没有自称独立审查、模拟验收、真实用户验收或0.8发布；尚未完成独立审查与实际CAD/GUI集成验证。该树旧WSL工作状态不作为当前阻塞。
