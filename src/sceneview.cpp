@@ -576,12 +576,14 @@ void SceneView::setParts(const QList<Part> &parts)
             }
         } else {
             constexpr int segments = 20;
+            // 乘三角函数前提升半径，防止合法double次正规径向偏移先量化成零或失真后再归一化。
+            const long double radius = static_cast<long double>(*part.radius);
             for (int i = 0; i < segments; ++i) {
                 const double a = i * 2 * pi / segments, b = (i + 1) * 2 * pi / segments;
-                const auto leftA = point(part, -static_cast<long double>(*part.length) / 2, *part.radius * std::cos(a), *part.radius * std::sin(a));
-                const auto leftB = point(part, -static_cast<long double>(*part.length) / 2, *part.radius * std::cos(b), *part.radius * std::sin(b));
-                const auto rightA = point(part, static_cast<long double>(*part.length) / 2, *part.radius * std::cos(a), *part.radius * std::sin(a));
-                const auto rightB = point(part, static_cast<long double>(*part.length) / 2, *part.radius * std::cos(b), *part.radius * std::sin(b));
+                const auto leftA = point(part, -static_cast<long double>(*part.length) / 2, radius * std::cos(a), radius * std::sin(a));
+                const auto leftB = point(part, -static_cast<long double>(*part.length) / 2, radius * std::cos(b), radius * std::sin(b));
+                const auto rightA = point(part, static_cast<long double>(*part.length) / 2, radius * std::cos(a), radius * std::sin(a));
+                const auto rightB = point(part, static_cast<long double>(*part.length) / 2, radius * std::cos(b), radius * std::sin(b));
                 triangle(part, leftA, rightA, rightB);
                 triangle(part, leftA, rightB, leftB);
                 triangle(part, point(part, -static_cast<long double>(*part.length) / 2, 0, 0), leftB, leftA);

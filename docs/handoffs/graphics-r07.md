@@ -30,3 +30,13 @@
 SceneData::annotations根据实际相机投影创建毫米标尺与选中件包络标注，overlay统一供软件/GL绘制；setParts保存mmPerUnit和包络并先做实际float精度保护；GlSurface构造请求MSAA，paintGL实测采样；eventFilter只改水平yaw反号。measurementAnnotations返回annotations同一计算的只读副本，用于有效尺寸/方向/缩放检查。
 
 实现者测试和目视检查不替代独立审查，也不代表新的真实人工验收。真实反馈来源已准确记录；root负责独审、Controller/Window集成、0.7功能验收/发布、用户交付。当前没有独审结论，未push/tag/main。
+
+## R07-01 独审修复进行中
+
+独立审查发现原Scene圆柱半径乘cos/sin仍先以double求值：denorm_min半径与2倍长度通过包络检查，但径向点被提前量化，模型失真。按最小范围在乘法前提升radius为long double，四个圆周角点全部复用此半径；未改相机、投影、MSAA、公共接口或root的Controller/Window/CMake。
+
+tests/r07_scene_tests新增unit半径1/长度2与等比例denorm_min半径/长度的真实绘制比较，裁去左上数值及底部标尺区域，比较模型/轴线每个像素；同时断言XYZ外包络毫米数值和归一化投影端点。修复前先跑新测试，实际differentModelPixels=92415并退出1，失败日志/两张crop保留build/r07-01-before。当前修复已落盘，局部Scene/Ninja构建和修复复验正在进行，暂不宣称关闭独审项。
+
+R07-01修复实际复验完成：局部Ninja构建r07_scene_tests/scene_tests成功；软件与原生完整r07_scene_tests均退出0，正常/等比例次正规圆柱模型crop的differentModelPixels均为0。原生依然请求4、contextFormat.samples=0、真正绘制FBO actual samples=4；原scene_tests原生回归退出0。受影响CTest scene_r07_measurements与scene_interaction两项均通过3.71s；未将rootUI未提交范围记成此次修复验证。
+
+证据：build/r07-01-software-after.log、build/r07-01-native-after.log、build/r07-01-native-regression.log、build/r07-01-targeted-ctest.log；正常/次正规模型crop PNG在前两个after目录，原生次正规crop已目视核对。修复前的92415差异与原独审临时探针（59153不同像素，不同crop）均保留，没有替换失败证据。修复行为需要独立复审，当前仅实现者技术复验完成，不自行关闭R07-01或宣称0.7发布/真实人工验收。root未提交Controller/Window/CMake/window_tests未编辑、暂存或提交；本轮没有数据库/服务/CAD操作。

@@ -202,6 +202,42 @@ int main(int argc, char **argv)
     REQUIRE(annotations[3].millimeters == 40 && annotations[3].label.contains(QStringLiteral("外径")));
     app.processEvents();
     REQUIRE(capture(scene, canvas).save(destination.filePath(QStringLiteral("r07-cylinder.png"))));
+    // R07-01：相同比例的圆柱归一化后必须真正画成相同模型；仅包络数值通过不足以发现径向失真。
+    // 裁掉左上尺寸文字和底部标尺，保留实际模型与轴线像素，避免不同毫米数量影响比较。
+    Part proportionalCylinder = cylinder;
+    proportionalCylinder.radius = 1;
+    proportionalCylinder.length = 2;
+    scene.setParts({proportionalCylinder});
+    scene.setSelectedPart(proportionalCylinder.id);
+    app.processEvents();
+    const auto unitAnnotations = scene.measurementAnnotations();
+    REQUIRE(unitAnnotations.size() == 4);
+    const QRect modelRegion(0, 110, canvas->width(), canvas->height() - 216);
+    const QImage unitModel = capture(scene, canvas).copy(modelRegion);
+    REQUIRE(unitModel.save(destination.filePath(QStringLiteral("r07-unit-cylinder-model.png"))));
+    const double tinyRadius = std::numeric_limits<double>::denorm_min();
+    proportionalCylinder.radius = tinyRadius;
+    proportionalCylinder.length = 2 * tinyRadius;
+    scene.setParts({proportionalCylinder});
+    scene.setSelectedPart(proportionalCylinder.id);
+    app.processEvents();
+    REQUIRE(!scene.rendererDescription().contains(QStringLiteral("场景错误")));
+    const auto tinyAnnotations = scene.measurementAnnotations();
+    REQUIRE(tinyAnnotations.size() == 4);
+    for (int axis = 1; axis <= 3; ++axis) {
+        REQUIRE(tinyAnnotations[axis].millimeters == 2 * static_cast<long double>(tinyRadius));
+        REQUIRE(QLineF(tinyAnnotations[axis].start, unitAnnotations[axis].start).length() < 1e-6);
+        REQUIRE(QLineF(tinyAnnotations[axis].end, unitAnnotations[axis].end).length() < 1e-6);
+    }
+    const QImage tinyModel = capture(scene, canvas).copy(modelRegion);
+    REQUIRE(tinyModel.save(destination.filePath(QStringLiteral("r07-subnormal-cylinder-model.png"))));
+    qsizetype differentModelPixels = 0;
+    for (int y = 0; y < unitModel.height(); ++y)
+        for (int x = 0; x < unitModel.width(); ++x)
+            if (unitModel.pixel(x, y) != tinyModel.pixel(x, y))
+                ++differentModelPixels;
+    QTextStream(stdout) << "R07-01 proportional cylinder differentModelPixels=" << differentModelPixels << Qt::endl;
+    REQUIRE(differentModelPixels == 0);
     // 圆柱外径大于DBL_MAX依然有限；不应窄化成inf再显示标尺。
     cylinder.radius = std::numeric_limits<double>::max();
     cylinder.length = std::numeric_limits<double>::max();
