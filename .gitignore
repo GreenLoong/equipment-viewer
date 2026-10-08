@@ -52,6 +52,7 @@ CMakeUserPresets.json
 !.env.example
 *.local.json
 *.local.ini
+*.local.conf
 *.pem
 *.key
 
@@ -69,3 +70,7 @@ desktop.ini
 *.db-*
 *.sqlite3
 *.sqlite3-*
+
+# Python verification artifacts
+__pycache__/
+*.pyc

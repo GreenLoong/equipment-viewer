@@ -60,6 +60,7 @@ export class EquipmentRepository {
         this.active = new Set();
         this.closed = false;
         this.closing = null;
+        this.equipmentDetailReadAttempts = 0;
     }
 
     /** 总时限包含排队/全部SQL/事务收尾；超时销毁实际连接，晚到的连接也不执行SQL。 */
@@ -322,6 +323,7 @@ export class EquipmentRepository {
 
     /** 按设备内顺序还原可导入JSON；不存在返回null。 */
     async get(id, options) {
+        this.equipmentDetailReadAttempts += 1; // 调用尝试即计数，失败同样计入，不以MISS数量猜测数据库访问。
         return this.withConnection(async (connection) => {
             const [equipment] = await connection.execute('SELECT id,name FROM equipment WHERE id=?', [id]);
             if (equipment.length === 0) return null;

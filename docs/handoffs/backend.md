@@ -104,3 +104,73 @@
 - Node两工具node --check通过；已找到本机Python3.12并用ast.parse检查redis-stdio.py语法，通过且未生成__pycache__。Linux/proc身份/真实Redis启动认证/真实WSL桥/性能尚未运行，本记录不等于真实环境验收或独立审查。
 
 下一步：主管/独立review完整读取三工具和资源测试；核实WSL发行版名后主管执行setup，必要时前台启动bridge；0.5正式发布后再定义实际0.6缓存接口与配置并实施。当前service/test、API源码、版本保持0.5，0.6工具/测试应排除0.5发布提交范围。
+
+## Runtime未确认子进程审查修复与0.6冻结提案
+
+- 主管/审查发现complete(false)过早移除未确认child，后续close和预算可能误判。现waiter的一次settlement与真实ChildProcess close分开：超时保留session/unconfirmed计数及连接预算，真实close才移除；后续close仍明确失败，晚到close后资源计数归零。新增kill不发close的替身回归验证预算拒绝新child、反复close不误报成功、晚到real close回收。
+- 新回归首次暴露allowHalfOpen收到TCP EOF后Node层未限制子进程排空；已加EOF预算timer，允许Python1秒排空，之后有界stop/kill。该测试加t.after清fake close并close，即使断言失败也收尾；首次挂起只中断本Agent测试session75136，不操作其他测试/WSL/API。
+- 默认发行版改为主管Registry核实的Ubuntu-24.04；本轮没有激活WSL，没有shutdown/terminate/restart。主管实测显式发行版/bin/true15秒挂起属于主管环境证据；全局WSL重启许可仍未回复，不自行操作。
+- 最新独立资源5/5通过，报告0.484秒；四文件从此冻结供review复跑，避免同时修改：setup SHA256722DE988579EB4DC8941FB74AD3372D6E8EA86CCE88B7ACF5CACE873863B9D01；bridge5386EEB406259F66869DFD5383B8B1069812ACD7AD40802C936FDFA320D4CBB3；py6370D5AF900888D765C36B45058F8B199771E46E8484F3D3877A81C90AD5C584；test6C78F383946F21538E9E61FA316B41BC2F835D7E7B1E14CC77D502170011F7BF。
+- 0.5正式发布d3d720e/tag v0.5.0由主管完成，0.6业务仍等待冻结契约。已只读核实官方核心@redis/client6.3.0注册元数据：Node>=20、dependencies空、无安装生命周期，未安装/改package。官方command-options明确AbortSignal/timeout仅覆盖未发送命令，因此拟用外部deadline销毁整个cache client/实际socket，而非仅race返回；read-only/best-effort缓存关闭优先destroy清队列，不在无界close等待上依赖原生超时。参考官方node-redis docs/command-options.md和client-configuration.md。
+- 已发主管详细待冻结提案：可选redis enabled默认false、仅引用专属redis.local秘密配置、独立namespace/TTL60/有限connect-command-close预算/冷却重连/有限队列；仅鉴权验证后的不可变详情使用cache；X-Cache HIT/MISS/BYPASS；auth状态诊断只计数不含keys/token；annotation永远MySQL。原子Lua限制读取值大小再返回，避免官方parser先分配巨大GET值和STRLEN/GET竞态；namespace+mysql.database+DTO版本+精确UTF8 ID SHA256，测试随机namespace不flush。
+
+下一步：runtime按冻结hash独立复审；主管最终docs/api-contract冻结后才写cache业务/pure测试。真实Redis/WSL验证仍是0.6发布门槛，用户重启许可缺失时不重启全局WSL，也不伪造真实缓存结果。
+
+## 0.6正式缓存实现与最终冻结（覆盖前述未实施状态）
+
+主管确认0.5正式发布并在docs/api-contract.md冻结0.6后已实现本节代码。root负责Qt/CMake版本与正常API切换；本Agent没有停止正常API、改Qt、启用service/test缓存或争用ev_test。恢复时磁盘核对实际Windows8765/PID51656，3310/6380当时未监听。用户已自行启动WSL属于主管最新证据，不据此自行重启/关闭全局WSL；真实Redis运行仍待工具独审后主管协调。
+
+- package/lock为0.6.0；只读registry核实官方核心@redis/client6.3.0（Node>=20，dependencies空，无安装生命周期），读取package/lock后npm install --ignore-scripts实际新增1包/audit0。已安装源码检查destroy清队列/真实socket、close等待pending、命令AbortSignal/timeout不覆盖已发命令。官方依据：https://github.com/redis/node-redis/blob/master/docs/command-options.md 与 docs/client-configuration.md；不能用native选项冒充总截止。
+- api/src/cache.mjs：配置结构/未知字段拒绝，默认disabled不读秘密/连Redis；enabled秘密文件缺失/读取不可用仅config_unavailable降级，文件读有AbortSignal预算。key固定ev:geometry:schema2:<encoded db>:<namespace>:<exact UTF8 ID sha>，TTL默认60，maxValue6MiB。TYPE/STRLEN/GET固定原子Lua限制reply，坏类型/巨型值在服务端删本key，不进入parser；客户端校验UTF8/JSON/geometry/精确ID，错误不日志或泄key/秘密。
+- 单次共享connect尝试、disabled offline queue、有限pending、自动重连false，后续请求冷却重连；握手/已发命令挂起实际destroy socket及队列。close取消pending与文件读、销毁client、有界connecting收尾；开始connect的微任务前检查closed/代际，避免close后新建socket，旧命令截止不销毁已恢复的新client。
+- server0.6只给鉴权/ID合法后的两详情路由cache；成功X-Cache HIT/MISS/BYPASS，404不负缓存；MISS SET失败仍原200/MISS。列表/annotations/POST/PUT不使用cache。鉴权status只安全字段，MySQLprobe失败200/ready false；health仍503。repository的equipmentDetailReadAttempts在get实际调用入口计数，含失败，不以MISS代替。
+- cache.test.mjs纯6项，cache-network.test.mjs官方client+受控真实TCP/RESP4项，resp-cache-peer.mjs明确仅模拟Lua；新增repo读取失败计数1项。覆盖禁用/结构/精确key、MISS/HIT/TTL/非法/巨型/namespace隔离、SET错不改业务、401/非法ID零缓存、状态字段/最新批注、真实AUTH/已发EVAL挂起毁socket/冷却恢复/close。此为受控网络结果，不等于真实RedisLua或性能验收。
+- tools/redis-stdio.py根据独审补转发前/proc/PID/cwd严格等于固定runtime，same binary/port/inode但其他cwd必须拒绝；保留AUTH后INFO/config_file/dir核验。Windows Python3.12 -B纯proc替身2/2通过，不调用WSL/真proc。py冻结SHA2563C450123122641C0EB22B9B16C74FE32CDB818E9E8B802B0F895893A2295EA96，test/redis-stdio.test.py=8ACBBD0641CAE4CD064C49E9F7582A62672E29DB6BBB252E28F990060E5A2FAD；其余runtime文件未改变。
+- 备份tools/backup-mysql.mjs新增pipeDumpUntilClosed：管道失败/120秒总时限后kill本次CLI，并最多5秒等待真实ChildProcess close；未确认则DUMP_EXIT_UNCONFIRMED而不报收尾成功，stdio/output关闭、partial保留；成功也必须pipeline+close0均结束。新增backup-process纯替身3项验证失败等待真实close/kill无close有界失败/正常close后才成功；没有再次运行ev_shared dump或修改sim恢复脚本。
+- api/README更新0.6导读和明确0.5/磁盘0.6/实际运行版本的边界。
+
+最终实际检查：npm test **34/34通过**，恢复复验报告1.431秒（此前1.361秒）；保留旧20项，新增cache10/repo计数1/backupCLI3。node syntax与限定git diff --check通过。没有运行ev_test integration/真实Redis/桥/缓存性能测试，正常API仍0.5由root管理；0.7三维/CAD反馈与本任务无代码交叉。
+
+以下业务/工具/test文件现在冻结供root与独立review，不与审查并行改动：
+
+| 文件 | SHA256 |
+| --- | --- |
+| src/cache.mjs | D115605E97E2001A7790575363D2689966BA4FB8A59C3A48837ACDB2450340E3 |
+| src/server.mjs | 8658709A9EE935C758BD383CFEFDE80A4BE661655ABB68A3E159EFB3C30588DE |
+| src/repository.mjs | 2385647E62FC86B3F280708127DA9CCA36EF28049A0D6D1E97625F5FDE2F086A |
+| tools/backup-mysql.mjs | 31BE3846DE4B8710F146662F12A64F3AFAB587A383F32D98BB67A1235FA17365 |
+| test/cache.test.mjs | BFDD44048246CB95FB8C55759F8E4507D45AFA796F95B9B662FC34881433DB71 |
+| test/cache-network.test.mjs | CB24BD76FF6D52E4D49F1055628B0844B594363E6FFFF2F5A93923C5A0505486 |
+| test/resp-cache-peer.mjs | 730A19EDF44B96A7268CEE4C4B018AC7F6C18938E4DF568F4EF845CBC4B0E032 |
+| test/backup-process.test.mjs | F61D9FD945C20701FB2A9083990106DA126845E7348D954CAD73341BE1127455 |
+| package.json | BF36F8C313B5F723100FC79A8D8CEC46A1CDD3B1CD8D3C05FE4D561DED01F423 |
+| package-lock.json | 4826A97EBA9EE5A97D5DE4B1ADDB14E66CF1A3784455D4279B31764D24459B2C |
+
+下一步：独审冻结cache/backup/runtime，主管协调WSL/独立Redis和MySQL恢复后再允许真实ev_test与缓存验收；来源如实分开，不先宣称0.6发布或1.0完成。
+
+## 独审R06-03冷凭证读取取消修复
+
+- 独审在D115…cache复现：HTTP请求Signal取消后lookup已BYPASS/inFlight0，但冷credential读取晚到仍创建连接并ready。只改cache.mjs与cache.test.mjs及本交接，其他冻结文件未动。
+- command.abort现在取消当前credential读取再取消connect/destroy；invalidate递增connectionGeneration。ensureConnection在读取前捕获代际、用局部凭证结果，并在创建client前核对代际/closed；读取刚完成但await continuation尚未执行的取消也不能创建socket，不保存该失效结果。
+- 新增真实内置AbortController的纯回归3项：reader遵循abort；reader故意忽略abort并晚返回有效凭证；读取已完成而冷连接continuation仍排队时abort。都要求clientFactory调用0、cache ready=false/inFlight0。测试不是实际HTTP/Redis请求，不冒充真实环境。
+- cache纯9/9通过（0.584秒），完整npm test37/37通过（1.325秒）。真实Redis/WSL/ev_test均未运行，root主API和sim环境未操作。待独立复审后才允许真实缓存验收。
+- 本修复现在冻结：cache SHA256=79DF7A6DB47A95782746FA036FDAD94D7A254C6D4C7F25E50E405A1AE4797F84；cache.test=EB6A9080DE9D205A504C8F6C605036A98D9574EB94BCDF8105470A5C083999F7。覆盖上一表这两文件旧hash，其他hash不变；限定diff --check通过。
+
+## 0.6最后真实技术验收脚本与backup kill失败补强
+
+- 主管报告R06-03已独审接受，专职模拟用户真Redis/真MySQL/GUI两平台accepted1/cleanup1并释放ev_test/Windows6380。本Agent收到直接真实Redis技术检查任务；首次脚本已落盘/全文自读、送主管检查，尚未执行，不把模拟角色证据冒充本Agent运行。
+- 新增test/cache-redis.integration.test.mjs，仅读专属redis.local并拥有自己的Windows6380前台bridge及随机namespace固定3个key。计划真实PING/INFO7.4.7、TTL EX1实际1200ms到期、坏JSON/UTF8/geometry/错ID、LIST类型、6MiB+1值直接原子Lua只返[2]/DEL并class拒绝，guardKey保持；关闭重建仅自己的bridge验证BYPASS恢复MISS/HIT。HTTP404不负缓存以真Redis+受控空Repository验证，不连接任何MySQL。只DEL自身3keys，不scan/FLUSH，不停LinuxRedis/正常API/global WSL；坏值和guard额外EX30限制失败遗留寿命。finally逐步收尾并验证keys/client/桥children确认0，不能误报cleanup1。
+- 该新脚本node --check通过，冻结hash896746EB0F93E46C246C837BF6E246148860452A6525AE92CE7692173FCDF7BB；由主管全文审阅后再执行，未加默认npm test避免纯检查自动启真实环境。
+- 同时独审实际发现backup child.kill抛EPERM会跳过3管道destroy和有界close，已最小try/catch kill失败继续收尾；新增fake killThrows回归要求DUMP_EXIT_UNCONFIRMED、3管道destroy和预算内完成，无真磁盘/CLI。backup-process纯4/4通过（0.591秒），全npm test38/38通过（1.314秒），cachehash保持79DF不变。
+- backup最终hash803CCD1E8131F8D120FA47C54C1C9146DFE150C885AA41EF447706AF1D730E24；backup-process.test=54D3EF48730F23D8E815898851E7B302F1E53856924983EFD3D362219F182117。需要独审复核后再复用dump工具，无需重复正常ev_shared备份。
+
+## 0.6真实技术门槛完成（覆盖前述未执行状态）
+
+主管全文读取896746…技术脚本并授权6380独占运行；已确认backup killThrows4替身被独审接受、R06-03业务修复独审接受。专职模拟用户真Redis/真MySQL/GUI两平台结果由其台账记录，不冒充本Agent操作GUI。
+
+- 本Agent实际运行`node --test test/cache-redis.integration.test.mjs`退出0/1项通过，报告2.949秒（案例2.497秒）。真实PING/INFO确认Redis7.4.7；EX1的PTTL正且<=1000，1200ms实际等待后key不存在；坏JSON/非法UTF8/不合法geometry/错设备ID/LIST类型/6MiB+1值均MISS/定向删除，guardKey保持。直接真实EVAL巨型值只返[2]，证明确实服务端限制而非仅Node后置丢弃。
+- 只关闭/重建本次Windowsbridge验证BYPASS后恢复MISS/fill/HIT，不停止LinuxRedis/globalWSL。真实Redis+临时HTTP/受控空Repository404两次不写负缓存，sets不增加；该项不访问MySQL，不把Repository替身称作真实DB。
+- 实际日志：`invalidValues=6，ownedKeys=0，bridgeChildren=0，cleanup=1`。cleanup精确DEL本轮随机namespace固定3keys、EXISTS3=0；关闭client/cache/HTTP以及自己的bridge并确认active/unconfirmed children均0。只读复核Windows6380无监听，Redis daemon保持未操作。
+- 随后完整npm test实际38/38通过（1.339秒），覆盖旧纯检查/缓存受控TCP/冷读取取消/backup EPERM收尾；旧真实`npm run test:integration`在确认test配置缓存disabled、ev_test空库guard下1/1通过（5.088秒）。包含原0.4事务/边界/锁断连/close和0.5无损迁移/幂等/CAS/作者UTC/重建读取。finally annotations→part/equipment/schema_version已清理，另只读DB查询确认ev_test tables=0；已释放ev_test与6380。
+- 没有运行正常ev_shared dump/迁移，没有停止正常API/原MySQL80或全局WSL；未涉及0.7三维/后续CAD角色变更。api/README已更新真实与受控边界。
+- 本轮业务hash保持cache79DF7A6DB47A95782746FA036FDAD94D7A254C6D4C7F25E50E405A1AE4797F84、server865870…/repo238564…不变；backup803CCD…/backup-process54D3…/新真实技术script896746…为最新冻结范围。技术测试完成不等于0.6已发布，主管负责最终独审范围、commit/tag、桌面包与远端。

@@ -4,7 +4,7 @@
 
 ## 当前目标与授权
 
-用户要求全部Agent开发，按0.3→0.4→0.5→0.6→0.9→1.0连续迭代、模拟用户反馈、独立审查和测试，并推送GitHub。不等待逐功能实现或确认；技术检查、模拟验收与真实验收分开。允许下载必要依赖与本机独立服务，不包含付费或公开部署。
+用户要求全部Agent开发，按0.3→0.4→0.5→0.6→0.7→0.8→0.9→1.0连续迭代、模拟用户反馈、独立审查和测试，并推送GitHub。0.7/0.8来自用户最新实际体验反馈，见docs/user-feedback-0.7.md。不等待逐功能实现或确认；技术检查、模拟验收与真实验收分开。允许下载必要依赖与本机独立服务，不包含付费或公开部署。
 
 有效规范docs/engineering-standards.md v1.1尤其第12节；路线docs/release-plan-1.0.md。保留正常数据、用户改动和远端历史，不force/reset --hard/clean。凭证、数据库、runtime、生成物不提交。
 
@@ -16,7 +16,13 @@
 
 ## 当前进行0.6
 
-0.5已技术/模拟验收、独审、打包及推送。0.6缓存契约/纯代码准备，runtime工具未确认child预算缺陷修复与独审中；WSL挂起，重启许可问题仍等用户明确回答，不执行全局restart/shutdown。专职review准备0.9资源测试，模拟用户准备受控ev_test备份恢复测试，首次执行前root检查。0.6真实Redis验收尚未完成，不宣布1.0。
+0.5已技术/模拟验收、独审、打包及推送。WSL已由用户启动，root明确Ubuntu-24.04 /bin/true退出0，没有重启全局。MySQL3310已按原标记恢复PID70128；Redis7.4.7项目setup已ready。0.6全部源码独审通过，pure38、真MySQL兼容1、真Redis TTL/坏值/LIST/6MiB原子删除/恢复1（backend和review分别亲自跑）、sim真实HTTP/MySQL/Redis/GUI两平台均accepted1/cleanup1。R06-01..03、backup kill抛错均关闭。当前打包与GitHub收尾，不提前记发布。
+
+root完整0.6构建12CTest通过13.57s；Qt资源5批×20窗×5loads/40requests两平台实际逻辑基线归零，观察数据在build/resource-observations-20261008-182251-448c67b3和182658-8701af43，无持续明显增长，不是ASan。0.9原恢复成功证据保留，CLI新helper6fake/独审已接受，真实新代码复验再协调ev_test。
+
+0.7隔离Git树 .runtime/r07-viewer，分支codex/r07-viewer，Scene提交c27ff641bd97bf6e4fdf6c6ff4cfed98541059e4已落盘，13CTest和原生实际FBO MSAA4通过，独审待。root在此树编辑Controller/Window隔离双击与按钮名，sim编写独立r07_window_tests；主工程Qt保持0.6，正式集成在0.6发布后。此CLI工作树不是Codex管理工作树，不用archive工具或递归删除；保留到集成和检查点完成。
+
+0.8真实CAD准备：已从FreeCAD Parts Library固定f5ca01c下载轴承与电机到忽略的.runtime/cad-samples，CC-BY许可/作者/hash已记录；OCP novtk/proxy7.9.3.1仅二进制wheel下载校验后装入.runtime/cad-python/site-packages，未改系统Python。实际探针读取轴承1实体约22×22×7mm、电机6实体；绝非应用CAD已接入。公开模型等0.8再复制samples，0.6包不包含未支持CAD样例。
 
 ## 已发布0.5证据
 
@@ -32,7 +38,7 @@ root负责Qt集成/CMake/公共文档/Git/交付。backend_v1负责api及自己�
 
 ## 服务与数据安全
 
-最近核对：独立MySQL3310 PID63920，正常API8765前台session78001。操作前重新核实，不能假设PID仍有效。原MySQL80的3306实例不操作。独立数据/标记在LOCALAPPDATA/EquipmentViewerSimulation；api/runtime配置忽略，不打印内容。
+最近核对：独立MySQL3310 PID70128；旧正常API78001已受控关闭，新0.6 API前台session63142，Redis桥前台82732。正常cache.enabled开启，旧秘密配置另存忽略的.recovery/config；health0.6/mysql up，只读未知ID404探针后status cache ready/inFlight0，无正常库测试插入。操作前重新核实PID/端口，不能假设session仍有效。原MySQL80的3306实例不操作。独立数据/标记在LOCALAPPDATA/EquipmentViewerSimulation；api/runtime配置忽略，不打印内容。
 
 ev_shared正常共享库；ev_test只从空库取得本轮所有权，非空拒绝测试和清理，清理annotations→part→equipment→schema_version。不删除正常SQLite。快照在.recovery/databases，Git不恢复数据库。
 
@@ -63,3 +69,13 @@ runtime review初读发现未确认child被从连接预算移除的问题，back
 当前进入0.6，仍待WSL重启问题用户明确回答。下一阶段工具/代码可自主准备并测试；不得提前发布0.6或1.0。0.5交付入口/预览在原聊天outputs；git源码与数据备份均已保留。
 
 最新远端复核：使用单次schannel/HTTP1.1再次ls-remote已退出0，main和feature均d3d720e8a063a4a24d70fa64c924ed9dfce1ffe8，v0.5.0 peeled同提交；前一额外读取握手失败已恢复。0.5远端一致已核实。
+
+## 0.6/0.9最新落盘状态
+
+0.5发布记录与0.6冻结契约的文档检查点cd15eda已推送main/feature，0.5tag仍d3d720e。新的@redis/client固定6.3.0已由backend检查后--ignore-scripts安装、audit0；API package/lock磁盘0.6，但主服务78001仍已加载0.5模块，不宣称缓存已启用。
+
+runtime bridge未确认child预算修复pure5/5且独审接受；Python转发前增加/proc/PID/cwd严格归属，pureproc替身2/2，最终独审待完成。未运行setup/Redis/bridge真实环境，用户WSL重启问题仍待答复。
+
+sim真实受控MySQL恢复脚本已exit0/accepted1/cleanup1：.recovery/tests/2026-10-08T05-30-45-888Z-c7cfdc59，6269bytes，SHA B8CAE4C023BE8DF999C95677164A1DFA9F4CE32738F91E4C6A7BE1A50BC99AAD；manifest restoreVerified=true/normalDatabaseRestore=false，ev_test已空。独审核证据接受，CLI pipeline失败后kill未确认退出的边界正在补强；未把它当正常ev_shared恢复。root未操作正常DB/原MySQL80。
+
+root仅维护集成/文档/Git；backend做cache业务与必要工具补强，sim做独立cache使用harness及restore CLI故障测试，review做Qt资源测试与独立审查。新脚本首次执行仍先全文检查；ev_test与Qt构建须协调串行。1.0门槛未完成。

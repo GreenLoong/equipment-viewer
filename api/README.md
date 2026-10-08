@@ -1,6 +1,6 @@
 # 本机共享服务与0.5增量迁移
 
-2026-10-08。供本项目集成/维护Agent使用。运行需要已安装Node24.18.0、mysql2 3.24.5和Windows MySQL8.0.42；默认HTTP127.0.0.1:8765、独立数据库127.0.0.1:3310。本轮代码为0.5，纯检查与ev_test真实检查已执行，独立审查及GUI集成由主管推进。正常ev_shared升级由主管先备份后统一启动，后端测试不直接升级共享库。
+2026-10-08。供本项目集成/维护Agent使用。运行需要已安装Node24.18.0、mysql2 3.24.5和Windows MySQL8.0.42；默认HTTP127.0.0.1:8765、独立数据库127.0.0.1:3310。0.5已发布，磁盘代码新增0.6缓存；运行版本以health为准。0.6纯/受控TCP、真实Redis技术门槛与旧MySQL兼容检查均已执行；正式交付由主管完成。正常共享库由主管统一切换，后端测试不直接升级共享库。
 
 ## 配置与命令
 
@@ -41,8 +41,24 @@ node tools/backup-mysql.mjs
 
 公开路由及输入输出见`../docs/api-contract.md`。geometry保持0.4不可变接口；本阶段没有Redis。
 
-## 验证边界
+## 0.5验证基线
 
 纯测试保留14项0.4检查，新增批注校验3项。真实integration必须显式test配置并检查ev_test/3310/ev_app/空库，先建立0.4夹具与资料，再运行无损升级。已检查幂等并发200+201、原POST→PUT→原POST200当前修订、CAS200+409、联合FK、作者/UTC、重建读取、DDL标记中断重入、最近200，以及原0.4/超时/断连/关闭回归。finally先drop本次annotations，再part/equipment/schema_version，不能与模拟GUI harness并发占用ev_test。
 
 上述后端运行不等于Qt草稿/冲突交互验收，也不等于独立源码审查。具体本轮命令结果与未验证事项见`../docs/handoffs/backend.md`。
+
+## 0.6缓存与运行边界
+
+`src/cache.mjs`只服务合法鉴权后的设备详情，schema仍2。可选redis配置见API契约；默认禁用，不读秘密文件或创建连接。启用时configFile相对于api目录，只读独立忽略的redis.local.json；不可用降级MySQL，配置结构错误拒绝启动。客户端与GUI均不持Redis密码。TTL默认60秒，key使用schema2/库/namespace/精确UTF8身份摘要，404不负缓存。
+
+详情成功响应增加X-Cache HIT/MISS/BYPASS；MISS的best-effort SET EX失败保持原200/MISS。固定Lua原子TYPE/STRLEN/GET先挡掉巨型值，客户端再验UTF8/JSON/geometry/精确ID；坏值仅删本key。批注、列表和发布不缓存，批注CAS继续MySQL。
+
+`GET /api/status`要求Bearer，返回本API进程计数/就绪状态；equipmentDetailReadAttempts是实际get尝试，包含失败，不等于MISS推测。字段不含keys/namespace/token/password/路径/SQL；MySQLprobe失败仍诊断200，而health维持503。官方核心@redis/client固定6.3.0、ignore-scripts安装；无offline queue/自动后台重连，连接合并一次、失败后后续请求冷却重连。已发命令截止会destroy真实socket和队列，关闭优先destroy而不等无界命令drain。
+
+新增cache纯和官方client+受控RESP TCP验证涵盖命中/缺失/坏值/巨型值/认证顺序/SET失败/挂握手/挂已发命令/真实socket关闭/有界恢复。受控peer模拟Lua，不等于真正Redis执行或性能证据。环境工具和专属桥按独立审查后的managed前台启动，不重启/关闭全局WSL。
+
+专门真实技术入口为`node --test test/cache-redis.integration.test.mjs`，不加入默认纯测试。首次执行先全文检查并协调Windows6380空闲；脚本只拥有自己的桥和随机namespace固定三个key，不使用MySQL、不scan/FLUSH、不停止LinuxRedis。已在实际7.4.7验证EX1/PTTL及1200ms实际到期、坏JSON/UTF8/几何/错ID、LIST与6MiB+1值原子Lua只返状态/定向DEL、guard保留、临时HTTP404不负缓存和自己桥暂停/恢复；结束ownedKeys=0/bridgeChildren=0/cleanup=1。HTTP404的Repository是受控替身，不能称作该项真MySQL；旧真实MySQL集成另行完整执行且4表已清理。
+
+最新默认npm test38/38、真实Redis技术1/1、旧MySQL缓存disabled兼容1/1通过。专职模拟用户的真Redis/真MySQL/GUI两平台证据由其单独台账记录。上述技术结果不代替主管发布检查与真实用户体验。
+
+备份管道失败会终止本次mysqldump并在5秒内等待真实close；未确认退出报DUMP_EXIT_UNCONFIRMED，保留partial，不把kill请求当收尾成功。源码故障分支有替身回归，正常共享库dump无需为此反复执行。

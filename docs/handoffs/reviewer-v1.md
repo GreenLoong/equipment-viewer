@@ -308,3 +308,71 @@ R06-01：首版bridge的complete(false)把未确认退出child移出sessions；�
 主管现通知4文件冻结：setup722DE9…B9D01、bridge5386EE…4CBB3、py6370D5…C584、test6C78F…1F7BF；false保留预算、晚到realclose释放、失败测试t.after收尾及socket EOF排空timer已补，最新5/5为backend报告。本角色下一步重新完整读取冻结范围并独立纯测试后再给工具结论；当前不预写修复通过。
 
 后续0.9准备授权：主管另授权本角色独立tests/reviewer_resource_tests.cpp和tests/measure_resources.ps1，Qt临时库/重复窗与网络/SQL/QObject计数、本测试PID句柄/PrivateBytes暖机批次观察；尚未落盘或运行，不计入0.5。Node堆增长等0.6后实施；数据库恢复先规划，不占ev_test或正常资料。
+
+## 0.6 runtime冻结修正独立接受
+
+已完整重读冻结三工具/新第五项bridge测试；独立node --test redis-bridge.test.mjs 5/5通过（506.5695ms），两Node工具语法检查通过。R06-01关闭：未确认child保留sessions预算/diagnostics，真实close才移除；late close可清预算，close在未确认期间继续拒绝；EOF增加有界排空，发行版默认Ubuntu-24.04。
+
+Python身份R06-02补强已完整读并独立WindowsPython3.12 -B运行redis-stdio.test.py，2/2通过，不读真proc/不启动WSL。check_owned_pid在认证与转发前同时核marker、PID、固定binary、固定runtime cwd及监听inode归属；同binary/port/inode但另一cwd明确拒绝，随后原INFO/config_file/dir认证核验仍保留。R06-02关闭。
+
+接受哈希：setup722DE988579EB4DC8941FB74AD3372D6E8EA86CCE88B7ACF5CACE873863B9D01；bridge5386EEB406259F66869DFD5383B8B1069812ACD7AD40802C936FDFA320D4CBB3；py3C450123122641C0EB22B9B16C74FE32CDB818E9E8B802B0F895893A2295EA96；bridge.test6C78F383946F21538E9E61FA316B41BC2F835D7E7B1E14CC77D502170011F7BF；Python test8ACBBD0641CAE4CD064C49E9F7582A62672E29DB6BBB252E28F990060E5A2FAD。本角色仅pure/只读，真实Redis7.4.7 ready为主管随后报告，用户自行启动WSL；本角色没有restart/shutdown或setup动作。
+
+## 提前0.9恢复模拟独立核对与CLI修正
+
+已完整读verify_mysql_restore初版F4D3C00463686718781E10F2401B115FBDA5A25591EBEB85CB752A44F2EA8064、实际mysql-restore-simulation.log、.recovery/tests/2026-10-08T05-30-45-888Z-c7cfdc59的manifest和SQL哈希。6269 bytes，SQL SHA B8CAE4C023BE8DF999C95677164A1DFA9F4CE32738F91E4C6A7BE1A50BC99AAD一致，日志accepted=1/cleanup=1，manifest restored/restoreVerified=true、normalDatabaseRestore=false。实际执行主体为模拟用户，本角色未争用ev_test或恢复正常库。
+
+守卫与证据合理：ev_test/3310/ev_app/marker/实际datadir/账号/空库/GET_LOCK；仅生成本次小样例，dump校验hash和不切DB后drop own4；CLI指定ev_test恢复，fresh API精确geometry/ID/批注DTO/UTC存储epoch、原指纹幂等、旧CAS拒绝及显式rev3验证，再清空自己表。成功结果支持恢复能力的受控模拟，不意味着ev_shared真实备份已经恢复。
+
+R09-01指出CLI pipeline失败kill即throw、未确认close就可能进入DROP。模拟用户已冻结新helper/main守卫并由本角色独立完整复读及node --test tests/mysql_restore_cli.test.mjs 6/6通过（669.4081ms）：失败/超时破坏管道、kill后有界等真实close；未确认只报告本次PID/path并main cleanup=0保留own表不DROP；kill抛错不绕守卫；import不运行DB主流程。R09-01修正复核接受，正常旧实际恢复证据保留，尚未以新helper再次运行真实恢复。新script SHA F5AC5A9785CD631112A2BE0BA9FB94334EAC94AE897D7AFA7818AB3DBF427EA2，fake test DD6A0867721E045E05765EE51570FFE1F32B0BE233424BB82687AA456CEFD3C1。
+
+## Qt资源测试冻结、待主管运行
+
+本角色已落盘并冻结tests/reviewer_resource_tests.cpp（2F87B1EC285DACA574B7C0CD988613814C946EC4D2A4A9B737DD6B356160DDB1）和tests/measure_resources.ps1（F6C9D0B7F273C7B4490D310724A045AF1BBEB24C87F942305AD0EE09AF26F148）。建议target reviewer_resource_tests link equipment_window+Qt6::Test，无额外MOC/lib；不修改业务/CMake，不与主管构建争用。
+
+暖机3窗+8请求，默认5批各20真实Window/Scene/共享对话框、每窗5次设备加载（每批100loads）、40请求均分正常/401/真实超时/到达对端后取消。已知QObject子树QPointer全失效、SQL连接回初始、所有reply/PeerSocket清理、暖机后widgets/windows/applicationDescendants等计数归基线；1400ms排空Scene有界探针。只临时SQLite/client配置和loopback端口0。
+
+PS已先自读并Parser0/UTF8 BOM EF-BB-BF，未执行；只启动本测试，按PID+出生时间采样Handles/PrivateBytes/WorkingSet，stdout JSONL/CSV/manifest留忽略build目录，异常或超时只终止自己Process并有界wait。逻辑计数与OS趋势分开，不宣称ASan或零泄漏。主管已全文读且正在串行构建session82643；等待实际结果，当前不记green。
+
+## 0.6 cache初轮关键待修R06-03
+
+已读cache/server/repository/package、官方@redis/client6.3.0实际destroy/queue实现与受控RESP测试。详细审查继续，暂不发布0.6。cache哈希D115605E97E2001A7790575363D2689966BA4FB8A59C3A48837ACDB2450340E3。
+
+已即时报告并用纯替身实际复现R06-03：command abort只cancelConnect/invalidate，ensureConnection等待秘密文件读取时没有取消cancelCredentials；HTTP signal已abort且lookup结束BYPASS/inFlight0之后，晚reader仍可返回有效凭证，创建并connect新client。实际输出connectsAfterAbort=1、cacheReadyAfterAbort=true；未用真实Redis/DB。应取消当前读取/使冷连接世代失效，晚读取不得创建socket，并加Signal.abort在credential读期间的回归。主管已派backend最小修复，待冻结代码后复审，不以之前31pure替代此失败路径。
+
+## 0.6 R06-03关闭、主场景通过与剩余发布门槛
+
+已完整重读冻结cache79DF7A6DB47A95782746FA036FDAD94D7A254C6D4C7F25E50E405A1AE4797F84、cache.test EB6A9080DE9D205A504C8F6C605036A98D9574EB94BCDF8105470A5C083999F7。abort先cancelCredentials再失效connectionGeneration；ensureConnection局部读取结果在clientFactory前检查closed/代际，阻止合作读取取消、忽略abort晚返回、已读但await continuation尚未运行三类冷连接复活。审查者实际cache9+官方client/真实TCP受控RESP4共13/13通过（1212.6961ms），R06-03关闭。
+
+源代码范围未发现其余缓存业务阻断：官方@redis/client6.3.0实际destroy幂等、flush队列并毁socket；offline queue禁用、排队上限/共享连接/连接与命令截止/冷却恢复/close保护合理。鉴权/ID先于lookup，状态安全枚举不含key/namespace/path/password/token；Lua原子TYPE/STRLEN/GET防巨型值进入parser，UTF8/JSON/geometry/id再验，坏值定向删除。SET失败保留已成功MySQL200/MISS；列表/批注/POST/PUT不缓存，404不负缓存；实际get调用计数不以MISS猜测。server=8658709A9EE935C758BD383CFEFDE80A4BE661655ABB68A3E159EFB3C30588DE，repo=2385647E62FC86B3F280708127DA9CCA36EF28049A0D6D1E97625F5FDE2F086A；Qt Dialog仍0.5接受的9EA哈希，没有新业务改动。
+
+已独立读cache-user-0.6-offscreen/windows实际日志及完整验收台账/harness：两轮accepted=1/cleanup=1，真实Redis/MySQL详情MISS读尝试+1、HIT+0、401先于缓存、几何持久、断桥BYPASS保留草稿/恢复HIT、最新批注仍读MySQL。独立看03BYPASS、04断桥最新批注、05恢复草稿三图，保存区更新至他人版本2/UTC而原中文多行草稿保留。harness只独占自己6380桥、空ev_test/随机namespace两个精确key，确认bridge children退出后清四表；未确认Qt退出不DROP。正常服务/库不属于测试目标。
+
+延迟范围：offscreen冷246.773ms/热16.796ms，windows冷254.318ms/热17.366ms，均各1次2零件样本。只记本轮路径和读次数，不能推大型设备统计加速。真实执行主体为模拟用户，审查者未重复争用真实服务。
+
+发布门槛尚需补齐：协议明确要求真实Redis TTL到期、坏JSON/错ID/非string/巨型值Lua删除回源；当前用户harness TTL60且不测过期/这些值，现证据仅fakeRESP模拟相关Lua。已通知主管由backend使用自己随机namespace/owned keys作小型真实测试，不需占MySQL；未用37pure替代真实Lua边界。源码与已测主场景可接受，完整0.6发布结论等此证据及包核对。
+
+## R09-02 backup kill抛错修正关闭
+
+主管指出并由审查者独立复现原backup31BE helper：pipeline失败后kill抛EPERM直接跳过后续收尾，实际stdout/stderr/output destroyed均false。已重读冻结803CCD1E8131F8D120FA47C54C1C9146DFE150C885AA41EF447706AF1D730E24与test54D3EF48730F23D8E815898851E7B302F1E53856924983EFD3D362219F182117：kill抛错仍继续destroy三流/有界wait，未确认报DUMP_EXIT_UNCONFIRMED；独立fake4/4通过（561.3918ms），R09-02关闭。仅fake，不重复备份正常库。
+
+## 提前0.9 Qt资源实际观察核对
+
+主管已串行构建并运行本角色两文件：offscreen与windows均exit0/未超时/逻辑计数accepted=true。证据在build/resource-observations-20261008-182251-448c67b3及182658-8701af43，实际EXE SHA BAC08317996AD376BDA229FBB79E53BCDED6E6A50249206D98A372F54EC7E9DC。执行主体为主管，本角色只读manifest/JSONL/CSV后独立重算。
+
+两平台暖机和5批的widgets/windows/sqlConnections/peerSockets都0，applicationDescendants都14且不增加；每批20真实窗×5加载、40请求矩阵及已知QObject弱引用检查按源码执行。offscreen明确软件投影；windows明确原生OpenGL，不能用软件结果替原生。
+
+按DateTimeOffset强转JSON事件与CSV时间作最近UTC匹配（每点距最近采样14.5..198.6ms），offscreen句柄294→293、PrivateBytes11.30→6.80MiB，中间6.73..11.71MiB波动；native610→598、182.18→117.10MiB，中间句柄628/624后回落。未观察持续上升，不能宣称ASan覆盖或零泄漏。初次分析用Parse重解释ConvertFrom-Json的DateTime造成时区错选最早采样，已在写结论前改强转纠正；采样CSV本身没有修改。
+
+此为0.9提前资源检查，不改变0.6已验收范围。仍需后续Node heap与完整稳定性/恢复/包检查；不能由这5批推断其他电脑或复杂CAD性能。
+
+## 0.6 最终源码发布门槛通过
+
+已全文读冻结test/cache-redis.integration.test.mjs（896746EB0F93E46C246C837BF6E246148860452A6525AE92CE7692173FCDF7BB），核实只拥有本次6380 Windows bridge与随机namespace固定3key；明确不建MySQL连接，不停LinuxRedis/globalWSL，不scan/FLUSH，不接普通API。清理先精确DEL/EXISTS3为0，再cache/client/HTTP关闭，最后bridge active/unconfirmed children0。已获主管此时6380空闲的独占运行授权。
+
+审查者亲自运行node --test test/cache-redis.integration.test.mjs，退出0、1/1通过，报告2909.3229ms；日志build/reviewer-cache-real-0.6.log。真实PING/INFO7.4.7、SET EX1/PTTL正且≤1000/1200ms真实过期，坏JSON/UTF8/geometry/错ID/LIST/6MiB+1目标值MISS/定向删除；直接真实EVAL巨型值只返[2]，guard保持；自己桥断开BYPASS/重建MISS-fill-HIT；真实Redis+受控空Repository的HTTP404不负缓存。此404子项没有MySQL，不冒充真实DB。最终invalidValues6、ownedKeys0、bridgeChildren0、cleanup1，6380已释放。
+
+backend另报告同脚本真1/1、完整pure38/38、严格空ev_test旧业务集成1/1（5.088s并清四表）；与本角色独立13cache/4backup/5bridge/2Python及专职模拟用户双平台真实Redis/MySQL/GUI证据合并，明确执行主体。所有R06-01/02/03、R09-01/02及原R04/R05问题已独立复核关闭。
+
+最终结论：0.6已审业务/运行工具源码独立审查通过，真实缓存门槛齐全，没有阻断源码检查点/commit/tag的未关闭项。主管可按持续授权升级正常API、打包与同步远端。最终桌面包尚未给meta，不预记包通过；真实用户体验与跨机器/复杂设备性能仍未验收。0.7新三维/CAD/交互位于另一工作树，不纳入本版通过范围。
+
+接受范围以此前最终cache79DF/server8658/repo2385/runtime722D/5386/Python3C45/backup803C及各实际测试哈希为准；Qt Dialog9EA保持0.5行为，CMake/main仅0.6版本/测试目标增量。后续改动需按影响重新审，不把本结论套未完R07。

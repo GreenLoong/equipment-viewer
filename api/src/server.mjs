@@ -7,8 +7,9 @@ import { TextDecoder } from 'node:util';
 import { ApiError, maximumBodyBytes, validateEquipment, validateText } from './validation.mjs';
 import { EquipmentRepository } from './repository.mjs';
 import { validateAnnotationCreate, validateAnnotationUpdate, validateAnnotationQuery, validateUuid } from './annotations.mjs';
+import { createEquipmentCache, normalizeCacheOptions } from './cache.mjs';
 
-export const version = '0.5.0';
+export const version = '0.6.0';
 const hash = (value) => createHash('sha256').update(value).digest();
 
 /** 读取忽略的本机配置；失败只给出安全提示，不输出秘密或文件内容。 */
@@ -23,6 +24,7 @@ export async function loadConfig(filename = process.env.EV_CONFIG_FILE
             || typeof config.mysql.database !== 'string' || !config.mysql.database)
             throw new Error('invalid config');
         const result = { ...config, host: config.host ?? '127.0.0.1', port: config.port ?? 8765,
+            redis: normalizeCacheOptions(config.redis),
             operationTimeoutMs: config.operationTimeoutMs ?? 10000, closeTimeoutMs: config.closeTimeoutMs ?? 1000,
             mysql: { ...config.mysql, host: config.mysql.host ?? '127.0.0.1', port: config.mysql.port ?? 3310,
                 connectionLimit: config.mysql.connectionLimit ?? 4 } };
@@ -38,10 +40,10 @@ export async function loadConfig(filename = process.env.EV_CONFIG_FILE
     } catch { throw new Error('本机API配置不可读或格式无效，请检查EV_CONFIG_FILE。'); }
 }
 
-function send(response, status, body, close = false) {
+function send(response, status, body, close = false, headers = {}) {
     if (response.destroyed || response.writableEnded) return;
     response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(close ? { Connection: 'close' } : {}) });
+        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(close ? { Connection: 'close' } : {}), ...headers });
     response.end(JSON.stringify(body));
 }
 
@@ -91,11 +93,13 @@ async function readJson(request) {
 }
 
 /** 创建可关闭的HTTP应用；可传入隔离Repository用于纯HTTP验证。 */
-export async function createApp(config, { repository } = {}) {
+export async function createApp(config, { repository, cache, cacheDependencies } = {}) {
+    const cacheOptions = normalizeCacheOptions(config.redis);
     const operationTimeoutMs = config.operationTimeoutMs ?? 10000;
     const closeTimeoutMs = config.closeTimeoutMs ?? 1000;
     const store = repository ?? new EquipmentRepository(config.mysql, { operationTimeoutMs, closeTimeoutMs });
     const operations = new Set();
+    let equipmentDetailReadAttempts = 0;
     const databaseOperation = (method, args = [], signal) => new Promise((resolve, reject) => {
         const controller = new AbortController();
         let settled = false;
@@ -115,7 +119,11 @@ export async function createApp(config, { repository } = {}) {
         operations.add(cancel);
         signal?.addEventListener('abort', cancel, { once: true });
         if (signal?.aborted) { cancel(); return; }
-        Promise.resolve().then(() => store[method](...args, { signal: controller.signal }))
+        Promise.resolve().then(() => {
+            if (controller.signal.aborted) throw new ApiError(503, 'DATABASE_TIMEOUT', '共享数据库操作超时，请稍后重试。');
+            if (method === 'get') equipmentDetailReadAttempts += 1;
+            return store[method](...args, { signal: controller.signal });
+        })
             .then((value) => finish(null, value), (error) => finish(error));
     });
     const closeStore = () => new Promise((resolve) => {
@@ -125,11 +133,22 @@ export async function createApp(config, { repository } = {}) {
             () => { clearTimeout(timer); resolve(); });
     });
     try { await databaseOperation('initialize'); } catch (error) { await closeStore(); throw error; }
+    let equipmentCache;
+    try { equipmentCache = cache ?? await createEquipmentCache(cacheOptions, config.mysql?.database ?? 'injected-test', cacheDependencies); }
+    catch (error) { await closeStore(); throw error; }
     const tokenHash = hash(config.token);
     const server = http.createServer(async (request, response) => {
         const requestAbort = new AbortController();
         response.once('close', () => { if (!response.writableEnded) requestAbort.abort(); });
         const runDatabase = (method, ...args) => databaseOperation(method, args, requestAbort.signal);
+        const sendEquipment = async (id) => {
+            // 调用处已鉴权并验证ID，非法请求不连接Redis、不改变缓存计数。
+            const cached = await equipmentCache.lookup(id, { signal: requestAbort.signal });
+            const equipment = cached.document ?? await runDatabase('get', id);
+            if (!equipment) throw new ApiError(404, 'NOT_FOUND', '设备不存在。');
+            if (cached.mode === 'MISS') await equipmentCache.fill(id, equipment, { signal: requestAbort.signal });
+            send(response, 200, { data: equipment }, false, { 'X-Cache': cached.mode });
+        };
         try {
             // WHATWG URL会归一化点路径，破坏合法设备ID "."/".." 的原文身份。
             if (typeof request.url !== 'string' || !request.url.startsWith('/'))
@@ -146,6 +165,13 @@ export async function createApp(config, { repository } = {}) {
                 if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED', '此接口只允许GET。');
                 await runDatabase('health');
                 send(response, 200, { data: { service: 'equipment-viewer', version, mysql: 'up' } });
+            } else if (pathname === '/api/status') {
+                if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED', '此接口只允许GET。');
+                let ready = true;
+                try { await runDatabase('health'); } catch { ready = false; }
+                send(response, 200, { data: { service: 'equipment-viewer', version,
+                    mysql: { ready, equipmentDetailReadAttempts: Number.isSafeInteger(store.equipmentDetailReadAttempts)
+                        ? store.equipmentDetailReadAttempts : equipmentDetailReadAttempts }, cache: equipmentCache.status() } });
             } else if (pathname === '/api/equipment') {
                 if (request.method === 'GET') {
                     const parameters = new URLSearchParams(query);
@@ -161,9 +187,7 @@ export async function createApp(config, { repository } = {}) {
                         try { id = decodeURIComponent((raw.includes('=') ? raw.slice(raw.indexOf('=') + 1) : '').replace(/\+/g, ' ')); }
                         catch { throw new ApiError(400, 'INVALID_ID', '设备ID的URL编码无效。'); }
                         validateText(id, 'equipmentId', true);
-                        const equipment = await runDatabase('get', id);
-                        if (!equipment) throw new ApiError(404, 'NOT_FOUND', '设备不存在。');
-                        send(response, 200, { data: equipment });
+                        await sendEquipment(id);
                     } else send(response, 200, { data: await runDatabase('list') });
                 }
                 else if (request.method === 'POST') {
@@ -178,9 +202,7 @@ export async function createApp(config, { repository } = {}) {
                 try { id = decodeURIComponent(pathname.slice(15)); }
                 catch { throw new ApiError(400, 'INVALID_ID', '设备ID的URL编码无效。'); }
                 validateText(id, 'equipmentId', true);
-                const equipment = await runDatabase('get', id);
-                if (!equipment) throw new ApiError(404, 'NOT_FOUND', '设备不存在。');
-                send(response, 200, { data: equipment });
+                await sendEquipment(id);
             } else if (pathname === '/api/annotations') {
                 if (request.method === 'GET') {
                     send(response, 200, { data: await runDatabase('listAnnotations', validateAnnotationQuery(query)) });
@@ -237,7 +259,8 @@ export async function createApp(config, { repository } = {}) {
                         server.closeAllConnections();
                     });
                 }
-                await closeStore();
+                try { await equipmentCache.close(); }
+                finally { await closeStore(); }
             })();
             return closing;
         }

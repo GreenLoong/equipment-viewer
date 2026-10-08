@@ -119,3 +119,12 @@ test('pool.end拒绝时也销毁全部剩余socket，不能清看门狗后直接
     assert.equal(sockets.length, 0);
     await store.close();
 });
+
+test('MySQL详情实际调用尝试包含失败，不能用缓存MISS推算', async () => {
+    const conn = connection({ execute: async () => { throw new Error('controlled read failure'); } });
+    const store = repository(conn);
+    assert.equal(store.equipmentDetailReadAttempts, 0);
+    await assert.rejects(store.get('A'), { code: 'DATABASE_UNAVAILABLE' });
+    assert.equal(store.equipmentDetailReadAttempts, 1);
+    await store.close();
+});

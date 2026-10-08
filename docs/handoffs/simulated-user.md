@@ -96,3 +96,25 @@ Node harness已检查源码并执行 `node --check tests/run_shared_user.mjs` �
 dump/manifest在 `.recovery/tests/2026-10-08T05-30-45-888Z-c7cfdc59`，6269字节，SHA256 B8CAE4C023BE8DF999C95677164A1DFA9F4CE32738F91E4C6A7BE1A50BC99AAD，独立Get-FileHash与manifest一致。manifest restored/restoreVerified=true，normalDatabaseRestore=false；真实freshAPI精确geometry/设备零件ID/批注rev2与UTC epoch/原UUID幂等/旧CAS409/显式rev3均通过。finally只清本轮4表并查空，已通知root/review，ev_test释放；dump正文没有打印，Git check-ignore两证据都忽略。独立审查仍由review角色判断，不把模拟恢复当正常数据恢复或真人验收。
 
 已读取主管新冻结0.6契约并同步0.6计划，正式MySQL详情读计数从鉴权status取得，批注没有额外计数字段不能虚构；固定Redis6380及测试namespace约束保留。0.6实际Redis尚未运行，WSL不由本角色restart/shutdown；下一步独立缓存harness，旧0.5已过测试仍不修改。
+
+## R09恢复CLI收尾补强
+
+独审接受原dump恢复数据证据，另指出CLI管道失败后kill即throw可能先DROP表、没有确认子进程close。本角色修 `verify_mysql_restore.mjs`：导出spawn可注入的runRestoreCli，main入口guard保证import不执行MySQL；失败/总超时destroy管道、kill后有界等待close，未确认只报自己PID/path并让主流程cleanup=0保留ev_test，不DROP。kill抛错也不绕过守卫，error listener保留。最新脚本SHA F5AC5A9785CD631112A2BE0BA9FB94334EAC94AE897D7AFA7818AB3DBF427EA2。
+
+新增 `tests/mysql_restore_cli.test.mjs` 六项纯fake回归全部通过：正常close、pipeline失败先kill后close、kill不close有界未确认、晚close、kill抛错、挂起超时。没有真实进程/DB/WSL操作。主管与review已收到待复核，尚未新版本真实复验；原恢复成功dump记录仍保留，不用fake通过替代新路径真实恢复。
+
+## 0.6实际测试文件与恢复状态
+
+新增 `tests/cache_user_tests.cpp`（SHA1AC5D2AA65AF93096CA0D167A1EC27B1CD04CC7A2B7D52D3D1C8E9C4770F6B67），主管已接CMake并编译成功；真实GUI刷新/下载/临时SQLite/草稿/桥故障回源/最新批注/恢复/Discard关闭。未执行无harness的Qt，未改旧0.5源。
+
+新增 `tests/verify_cache_user.mjs` 最新SHA67AD0D53EC166ACA725993B4A549F34423D2F3E721FEE296AB39A238B0FA2911；仅语法检查通过。真Redis PING→空ev_test/random namespace→MISS/HIT/status读次数/401→GUI观察代理→持有桥暂停/重建→批注最新revision2；按equipmentCacheKey精确DEL2键、owned4表、桥children退出确认。已复用R09helper确认Qt close，未确认则cleanup0不DROP。Root需首次全文读此最新版本，当前未跑WSL/GUI或占DB。
+
+额度恢复时主管报告用户已自行启动WSL且/bin/true0，本角色不global restart/shutdown；3310down由主管恢复。等R09复核、缓存harness全文读与独占ev_test/6380通知后才串行真实验收。新0.7意见由真人用户提出（经主管转述：旋转方向、抗锯齿、隔离双击、视角回正、标尺、CAD导入），主管维护真实反馈；本角色不写成模拟发现，先完成0.6，再协助交互验证。
+
+## 0.6真实模拟验收完成
+
+主管全文检查最新cache harness及runRestoreCli，缓存源码R06-03复审接受、官方TCP13纯回归通过；真实LinuxRedis7.4.7 ready、MySQL3310恢复PID70128、ev_test查空、Windows6380空后放行。本角色持自己的6380桥，不停LinuxRedis/globalWSL/正常API，亲自跑offscreen退出0（约4.16秒），等待root原生资源测试60413退出0后windows退出0（约5.04秒）。
+
+两个日志 `build/cache-user-0.6-offscreen.log` 与 `build/cache-user-0.6-windows.log`：真MISS/HIT、冷MySQL详情+1/热+0、query/path/点ID、缓存前401、真实GUI刷新下载/临时SQLite、桥暂停BYPASS回源保几何/选择/草稿、批注最新revision2、桥恢复HIT全部accepted1。cleanup1确认owned2key/4表/桥children收尾，已向root通知ev_test/6380/焦点释放。延迟为各一次2零件样例：offscreen冷246.773ms热16.796ms；windows冷254.318ms热17.366ms，不泛化性能结论。
+
+独立查看Windows六图：本地模型高亮与完整属性，初始保存内容/多行草稿保持，断桥后最新保存rev2/updatedBy乙/UTC清楚，旧稿保留，重连后仍正常，token遮蔽；无阻断体验问题。0.6七项有限模拟验收通过，非真人/非代码review/非0.7新交互。详情已更新feedback0.6，旧0.5源仍不改。R09新恢复CLI真复验由主管review后另协调，原dump数据证据与fake6保持分开。

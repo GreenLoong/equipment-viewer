@@ -38,6 +38,44 @@ export async function preparePrivateOptionFile(filename, contents, { openFile = 
     }
 }
 
+/** dump管道失败/超时后kill并有界等待真实close，失败保留partial，不把kill请求当退出。 */
+export async function pipeDumpUntilClosed(child, output, { runPipeline = pipeline, operationTimeoutMs = 120000,
+    terminateGraceMs = 5000 } = {}) {
+    let closed = false;
+    let closeResult;
+    let finishClose;
+    let failSpawn;
+    const closePromise = new Promise((resolve) => { finishClose = resolve; });
+    const spawnFailure = new Promise((_resolve, reject) => { failSpawn = reject; });
+    child.once('close', (code) => { closed = true; closeResult = code; finishClose(); });
+    child.on('error', () => failSpawn(new Error('Dump process failure')));
+    let timer;
+    const deadline = new Promise((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Dump deadline')), operationTimeoutMs); });
+    try {
+        await Promise.race([Promise.all([runPipeline(child.stdout, output), closePromise]), spawnFailure, deadline]);
+        if (closeResult !== 0) throw new Error('Dump process failed');
+    } catch {
+        clearTimeout(timer);
+        if (!closed) {
+            try { child.kill(); }
+            catch { /* kill失败仍须关闭本次管道并按预算等待，不以原异常跳过收尾。 */ }
+        }
+        child.stdout.destroy();
+        child.stderr.destroy();
+        output.destroy();
+        if (!closed) {
+            let grace;
+            await Promise.race([closePromise, new Promise((resolve) => { grace = setTimeout(resolve, terminateGraceMs); })]);
+            clearTimeout(grace);
+        }
+        if (!closed) {
+            child.unref?.();
+            throw Object.assign(new Error('Dump exit unconfirmed'), { code: 'DUMP_EXIT_UNCONFIRMED' });
+        }
+        throw Object.assign(new Error('Dump failed after confirmed process exit'), { code: 'DUMP_FAILED' });
+    } finally { clearTimeout(timer); }
+}
+
 /** 只备份已核实的本机共享库，stdout二进制落盘；失败保留partial，不导入或清理数据库。 */
 async function main() {
     if (process.platform !== 'win32' || !process.env.LOCALAPPDATA) throw new Error('unsupported platform');
@@ -85,14 +123,7 @@ async function main() {
             '--default-character-set=utf8mb4', '--column-statistics=0', 'ev_shared'],
             { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
         child.stderr.resume(); // 工具错误可能携带敏感资料，不向stdout转发。
-        const exited = new Promise((resolve, reject) => {
-            child.once('error', reject);
-            child.once('close', (code) => code === 0 ? resolve() : reject(new Error('dump exit failure')));
-        });
-        const timer = setTimeout(() => child.kill(), 120000);
-        try { await Promise.all([pipeline(child.stdout, createWriteStream(partial, { flags: 'wx', mode: 0o600 })), exited]); }
-        catch (error) { child.kill(); throw error; }
-        finally { clearTimeout(timer); }
+        await pipeDumpUntilClosed(child, createWriteStream(partial, { flags: 'wx', mode: 0o600 }));
         const [after] = await query(inventorySql);
         if (JSON.stringify(after) !== JSON.stringify(tables)) throw new Error('schema changed during backup');
         const details = await stat(partial);
@@ -111,7 +142,8 @@ async function main() {
     }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(() => {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error) => {
     console.error('共享库备份失败；数据库未修改，已有partial保留。请核实本机标记、端口、专属配置与mysqldump权限。');
+    if (error.code === 'DUMP_EXIT_UNCONFIRMED') console.error('本次dump已请求终止但未确认退出，请主管核实受控CLI进程；不宣称收尾成功。');
     process.exitCode = 1;
 });
