@@ -133,6 +133,41 @@ bool parserAndCodec()
     part["dimensions"] = QJsonArray{0.1,2,2}; array[0] = part; invalid["parts"] = array;
     CHECK(!CadResultParser::parse(QJsonDocument(invalid).toJson(), equipment, parts, error));
     CHECK(!CadResultParser::parse(QByteArray("\xff",1), equipment,parts,error));
+    const Equipment preservedEquipment=equipment;
+    const auto preservedMesh=parts[0].mesh;
+    for(const QString &suffix: {QStringLiteral("\n"),QStringLiteral("\r\n")}) {
+        invalid=protocol(); invalid["sourceSha256"]=QString(64,'a')+suffix;
+        CHECK(!CadResultParser::parse(QJsonDocument(invalid).toJson(),equipment,parts,error));
+        CHECK(equipment.id==preservedEquipment.id && parts[0].mesh==preservedMesh);
+    }
+    // 引用点真实包络为2mm，虚报1000mm即使containment通过也必须拒绝。
+    invalid=protocol(); array=invalid["parts"].toArray(); part=array[0].toObject();
+    part["dimensions"]=QJsonArray{1000,1000,1000}; array[0]=part; invalid["parts"]=array;
+    CHECK(!CadResultParser::parse(QJsonDocument(invalid).toJson(),equipment,parts,error));
+    CHECK(error.contains("包络与尺寸"));
+    CHECK(equipment.id==preservedEquipment.id && parts[0].mesh==preservedMesh);
+    // 偏心包络仍在声明bbox内，双边近似校验应拒绝错误中心。
+    invalid=protocol(); array=invalid["parts"].toArray(); part=array[0].toObject(); mesh=part["mesh"].toObject();
+    auto vertices=mesh["vertices"].toArray(); vertices[0]=QJsonArray{-0.9,-1,-1};
+    mesh["vertices"]=vertices; part["mesh"]=mesh; array[0]=part; invalid["parts"]=array;
+    CHECK(!CadResultParser::parse(QJsonDocument(invalid).toJson(),equipment,parts,error));
+    CHECK(error.contains("包络与尺寸") && parts[0].mesh==preservedMesh);
+    // 未引用的两个极值顶点不能撑出声明包络。
+    invalid=protocol(); array=invalid["parts"].toArray(); part=array[0].toObject(); mesh=part["mesh"].toObject();
+    vertices=mesh["vertices"].toArray(); vertices.append(QJsonArray{-500,-500,-500});
+    vertices.append(QJsonArray{500,500,500}); mesh["vertices"]=vertices;
+    part["mesh"]=mesh; part["dimensions"]=QJsonArray{1000,1000,1000}; array[0]=part; invalid["parts"]=array;
+    CHECK(!CadResultParser::parse(QJsonDocument(invalid).toJson(),equipment,parts,error));
+    CHECK(error.contains("包络与尺寸") && equipment.id==preservedEquipment.id && parts[0].mesh==preservedMesh);
+    // tiny轴声明0.001mm而真实跨度0.0005，必须受每轴5%公差限制。
+    invalid=protocol(); array=invalid["parts"].toArray(); part=array[0].toObject(); mesh=part["mesh"].toObject();
+    mesh["vertices"]=QJsonArray{QJsonArray{-1,-1,-0.00025},QJsonArray{1,-1,0.00025},QJsonArray{0,1,0}};
+    part["mesh"]=mesh; part["dimensions"]=QJsonArray{2,2,0.001}; array[0]=part; invalid["parts"]=array;
+    CHECK(!CadResultParser::parse(QJsonDocument(invalid).toJson(),equipment,parts,error));
+    CHECK(error.contains("包络与尺寸") && parts[0].mesh==preservedMesh);
+    bad=decoded; bad.triangles[0]={0,1,99};
+    CHECK(!MeshGeometryCodec::validateBounds(bad,{2,2,2},{0,0,0},error));
+    bad.triangles.clear(); CHECK(!MeshGeometryCodec::validateBounds(bad,{2,2,2},{0,0,0},error));
     invalid=protocol(); array=invalid["parts"].toArray();
     for(int n=1;n<1001;++n) { part=array[0].toObject(); part["id"]=QString::number(n); array.append(part); }
     invalid["parts"]=array;
@@ -148,6 +183,16 @@ bool persistence()
         EquipmentRepository repo; CHECK(repo.openDatabase(path)); CHECK(repo.initialize());
         CHECK(repo.saveEquipmentWithParts(equipment, parts));
         CHECK(!repo.saveEquipmentWithParts(equipment, parts));
+        for(const QString &suffix: {QStringLiteral("\n"),QStringLiteral("\r\n")}) {
+            auto invalidSha=parts; invalidSha[0].equipmentId="bad-sha";
+            invalidSha[0].cadSourceSha256+=suffix;
+            CHECK(!repo.saveEquipmentWithParts({"bad-sha","invalid"},invalidSha));
+            CHECK(repo.lastError().contains("形状"));
+        }
+        auto misleading=parts; misleading[0].equipmentId="misleading";
+        misleading[0].sizeX=1000; misleading[0].sizeY=1000; misleading[0].sizeZ=1000;
+        CHECK(!repo.saveEquipmentWithParts({"misleading","invalid"},misleading));
+        CHECK(repo.lastError().contains("包络与尺寸"));
         QList<Part> large(1001, parts.first());
         for(int i=0;i<large.size();++i) { large[i].equipmentId="too-many"; large[i].id=QString::number(i); }
         CHECK(!repo.saveEquipmentWithParts({"too-many","invalid"},large));
@@ -163,6 +208,9 @@ bool persistence()
         CHECK(loaded.size()==1 && loaded.first().mesh->vertices==parts.first().mesh->vertices);
         CHECK(loaded.first().cadSourceName=="motor.step" && loaded.first().cadSourceSha256==QString(64,'a'));
         Inspector i; CHECK(i.open(path));
+        CHECK(i.run("UPDATE part SET size_x=1000,size_y=1000,size_z=1000 WHERE shape='mesh'"));
+        CHECK(!repo.loadParts(equipment.id,loaded)); CHECK(repo.lastError().contains("包络与尺寸"));
+        CHECK(i.run("UPDATE part SET size_x=2,size_y=2,size_z=2 WHERE shape='mesh'"));
         CHECK(i.run("UPDATE part SET mesh_blob=zeroblob(12) WHERE shape='mesh'"));
         CHECK(!repo.loadParts(equipment.id,loaded));
         CHECK(repo.lastError().contains("BLOB"));

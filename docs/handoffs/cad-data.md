@@ -38,3 +38,12 @@
 独立审查指出旧loadParts直到全部decode后才核合计资源，外部/损坏库多条各自合法网格可能先导致大量分配。最小修复：主查询仅取BLOB长度与12字节EVM1头；每行先核总part≤10000/CADpart≤1000及合法头/64位期望长度/单条限制，再累计vertices≤600000、triangles≤400000。只有预算内当前行才通过参数绑定查询完整BLOB并decode，读回BLOB头/长度必须与已核结果一致；超限即返回，不继续读后续行。公开接口和既有失败输出语义保持。
 
 受控回归只用QTemporaryDir：3行各自合法200001顶点BLOB（每条约4.8MiB），总600003，第三行在decode前报告合计超限。再将第三行payload首double改NaN且保留合法头/长度，仍优先报告合计错误，证明不进入第三行decode分配；不制造OOM。完整增量构建成功，13/13 CTest通过14.84秒；真实bearing/motor跨模块重启存取复验退出0，Budget=1/Interoperability=1。正常数据库未访问，修复待独立复审。
+
+## R08-02/03审查修复：真实包络与严格SHA
+
+R08-01已经独立复核接受。R08-02原containment不能证明声明尺寸与三角形实际包络一致；R08-03正则`$`可匹配最终换行前位置，导致64hex加LF的非法SHA进入parser。按主管冻结规范最小修复：
+
+- validateBounds保留全部顶点containment/worldfinite，独立检查引用索引合法及非空triangles，只统计实际三角引用顶点AABB；每轴min/max须分别接近`-size/2`与`+size/2`。允许真实BRep解析包络和离散曲面误差：`D=clamp(max(sizeXYZ)*0.002,0.02,0.25)`毫米，双边公差为`min(2*D,0.05*axisSize)+128*double epsilon*axisSize`。中间计算使用long double，避免极端尺寸溢出/下溢；拒绝错误显示“网格包络与尺寸不一致或离散精度不足”。不以box降级替代。
+- Parser及Repository验证显式要求sourceSha256 QString长度64，再检查hex，拒绝LF/CRLF等尾字符。接口和worker协议保持。
+
+回归：真实2毫米网格虚报1000、bbox内偏心、未引用极值顶点撑尺寸、tiny轴50%比例虚报均拒绝且parser输出保持；validateBounds直接调用坏索引/空triangles安全失败；Repository保存与读取均拒绝假包络；SHA加LF/CRLF在parser失败保持、Repository应用校验先拒绝。最终完整构建成功，无新增warning；13/13 CTest通过15.98秒，cad_repository2.00秒。真实bearing1/1444v1428t与motor6/5709v5510t解析、临时SQLite重启逐字段/网格精确回读仍全部accepted=1，Budget=1/Interoperability=1，退出0。正常数据库未访问；修复待独立复审。

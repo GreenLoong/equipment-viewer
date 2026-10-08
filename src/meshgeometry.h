@@ -19,7 +19,7 @@ public:
     static constexpr quint32 maxTriangles = 400000;
     /** 检查资源上限、有限坐标、索引和退化三角形。 */
     static bool validate(const MeshGeometry &mesh, QString &error);
-    /** 检查局部外包络及世界坐标有限；尺寸为正，容差为相对1e-7毫米。 */
+    /** 核世界有限、全部顶点containment及实际三角引用点外包络；允许worker离散公差。 */
     static bool validateBounds(const MeshGeometry &mesh, const std::array<double, 3> &size,
                                const std::array<double, 3> &position, QString &error);
     /** 写入固定Qt6_5、LittleEndian、DoublePrecision的EVM1格式。 */

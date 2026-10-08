@@ -4,6 +4,7 @@
 #include <QIODevice>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 namespace {
 void configure(QDataStream &stream)
@@ -71,6 +72,36 @@ bool MeshGeometryCodec::validateBounds(const MeshGeometry &mesh,
             if (!std::isfinite(vertex[axis]) || std::abs(vertex[axis]) - half > tolerance
                 || !std::isfinite(position[axis] + vertex[axis]))
                 return fail(error, QStringLiteral("网格顶点超出局部外包络或世界坐标溢出。"));
+    }
+    if (mesh.triangles.isEmpty())
+        return fail(error, QStringLiteral("网格没有可计算包络的三角形。"));
+    std::array<long double, 3> minimum{}, maximum{};
+    minimum.fill(std::numeric_limits<long double>::infinity());
+    maximum.fill(-std::numeric_limits<long double>::infinity());
+    for (const auto &triangle : mesh.triangles) {
+        for (quint32 index : triangle) {
+            if (index >= quint64(mesh.vertices.size()))
+                return fail(error, QStringLiteral("网格三角索引越界。"));
+            for (int axis = 0; axis < 3; ++axis) {
+                const long double coordinate = mesh.vertices[index][axis];
+                minimum[axis] = std::min(minimum[axis], coordinate);
+                maximum[axis] = std::max(maximum[axis], coordinate);
+            }
+        }
+    }
+    // BRep解析包络可略大于离散曲面；公差对应worker线性偏差，并限制为每轴5%。
+    // 仅使用实际三角引用点，未使用顶点不能伪造外包络。long double避免极端尺寸中间溢出/下溢。
+    const long double largest = std::max({static_cast<long double>(size[0]),
+        static_cast<long double>(size[1]), static_cast<long double>(size[2])});
+    const long double deflection = std::clamp(largest * 0.002L, 0.02L, 0.25L);
+    for (int axis = 0; axis < 3; ++axis) {
+        const long double extent = size[axis];
+        const long double half = extent / 2;
+        const long double tolerance = std::min(2 * deflection, 0.05L * extent)
+            + 128.L * std::numeric_limits<double>::epsilon() * extent;
+        if (std::abs(minimum[axis] + half) > tolerance
+            || std::abs(maximum[axis] - half) > tolerance)
+            return fail(error, QStringLiteral("网格包络与尺寸不一致或离散精度不足。"));
     }
     return true;
 }

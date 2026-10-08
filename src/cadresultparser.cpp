@@ -53,6 +53,7 @@ bool CadResultParser::parse(const QByteArray &bytes, Equipment &equipment,
         || !object["version"].isDouble() || object["version"].toDouble() != 1
         || object["unit"] != QJsonValue("mm") || !text(object["sourceName"])
         || !object["sourceSha256"].isString()
+        || object["sourceSha256"].toString().size() != 64
         || !QRegularExpression(QStringLiteral("^[0-9a-fA-F]{64}$"))
                 .match(object["sourceSha256"].toString()).hasMatch()
         || !object["parts"].isArray())

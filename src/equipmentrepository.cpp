@@ -385,6 +385,7 @@ bool EquipmentRepository::validate(const Equipment &equipment, const QList<Part>
             || (part.shape == QStringLiteral("mesh") && positive(part.sizeX)
                 && positive(part.sizeY) && positive(part.sizeZ) && !part.radius && !part.length
                 && part.mesh && !part.cadSourceName.trimmed().isEmpty()
+                && part.cadSourceSha256.size() == 64
                 && QRegularExpression(QStringLiteral("^[0-9a-fA-F]{64}$"))
                        .match(part.cadSourceSha256).hasMatch());
         if (!validShape || !std::isfinite(part.positionX) || !std::isfinite(part.positionY)
