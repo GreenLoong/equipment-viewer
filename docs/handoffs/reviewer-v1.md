@@ -417,3 +417,11 @@ R07-01：src/sceneview.cpp圆柱leftA/leftB/rightA/rightB（581..584行）径向
 R07-01已关闭。结合本角色实际源码审查、窗口offscreen亲自回归、专职模拟用户两平台控件结果、原生图形/标尺与修后证据，当前R07三维/隔离/窗口范围独立审查通过，无未关闭源码阻断项。可以进入主管集成、最终构建回归和0.7包核对；不把未打包/未推送记为交付完成，真实用户需求来源与自动验收主体仍分别记录。
 
 通过范围为Scene509324/h33A82、test363216、ControllerC3E2/C71C、WindowAE68、窗口test54E6及相应CMake测试接入；尺寸中心截面参考与外包络语义应继续在指南说明。高DPI crop测试建议不影响此本机通过结论，后续若调整测试须再次核实际差异；产品MSAA支持依驱动如实报告。CAD0.8未审/未包含，不将本结论套到新网格或转换流程。
+
+## 0.7桌面包最终独立核对通过（2026-10-09）
+
+已亲自读取outputs/equipment-viewer-0.7.0-20261009-000738(.zip) manifest：version0.7.0/sourceCommit8f2a0b250a1ec8022974627152f3e884af5ead69/databaseIncluded=false，sourceHasUncommittedChanges=true如实反映当时未来0.8未提交worker/test/handoff；核对时主树HEAD8f2a且未提交仅这些未来文件。worker不在桌面包/CMake0.7，不能把dirty旗标误写clean。
+
+目录EXE、build EXE、ZIP内EXE独立SHA256均80DD310C45247D04127A564FF003CE3B52BDBA110C49D93CD9EA70D05BD40086。ZIP32条目，未发现数据库/秘密配置/key/pem/env或未来CAD worker/runtime。已独立查看outputs/0.7包启动验证.png：正常中文、三件基础模型和视角回正文案；该启动抓图不作为完整GL叠加标尺的像素证明，原生FBO标尺/采样及隔离已由R07专项证据验证。主管报告清Qt PATH/plugins原生smoke退出0，本角色不冒充再次运行。
+
+结合已关闭R07-01与已接受R07源码范围，0.7包独立核对通过，无本版发布阻断，可按持续授权tag/push。主树最终14CTest16.50秒/原生专项由主管运行，不套未实施0.8；真实用户再次体验验收仍未声称发生。
