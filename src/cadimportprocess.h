@@ -15,6 +15,12 @@ public:
         QString modules;
         QString converter;
         int timeoutMs = 120000;
+        /** 退出确认总预算，最多3000毫秒；测试可缩短，但不能放宽生产上限。 */
+        int exitConfirmationMs = 3000;
+        /** 仅用于受控故障测试：返回false制造本对象Job查询失败，不提供Job/PID。 */
+        std::function<bool()> allowJobQuery;
+        /** 仅用于受控故障测试：返回false制造本对象Job终止失败，不提供Job/PID。 */
+        std::function<bool()> allowJobTermination;
         /** 从显式环境变量或应用旁cad-runtime读取运行路径。 */
         static Config runtime();
     };
@@ -46,4 +52,7 @@ private:
     void stop(const QString &error);
     void finish(int exitCode, bool normalExit);
     void complete(QByteArray bytes, const QString &error);
+    bool confirmTreeEmpty(int budgetMs);
+    bool terminateJob();
+    void retainUnconfirmed(const QString &error);
 };

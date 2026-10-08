@@ -8,6 +8,8 @@
 #include <QPointer>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QElapsedTimer>
+#include <QThread>
 #include <algorithm>
 #include <vector>
 #ifdef Q_OS_WIN
@@ -67,6 +69,8 @@ struct CadImportProcess::State {
     bool busy = false;
     bool stopping = false;
     bool confined = false;
+    bool treeConfirmed = false;
+    QElapsedTimer exitBudget;
 #ifdef Q_OS_WIN
     std::unique_ptr<WindowsJob> job;
 #endif
@@ -89,6 +93,7 @@ CadImportProcess::CadImportProcess(const Config &config, QObject *parent)
 {
     state_->config = config;
     state_->config.timeoutMs = std::clamp(config.timeoutMs, 50, 120000);
+    state_->config.exitConfirmationMs = std::clamp(config.exitConfirmationMs, 50, 3000);
     state_->deadline.setSingleShot(true);
     state_->outputWatch.setInterval(100);
     connect(&state_->deadline, &QTimer::timeout, this, [this] {
@@ -104,6 +109,9 @@ CadImportProcess::~CadImportProcess()
 {
     // QObject基类析构晚于派生成员；先清回调，避免取消信号访问已销毁窗口。
     state_->completion = {};
+    // 故障注入只影响受控调用，析构仍使用真实拥有的Job做最后清理。
+    state_->config.allowJobQuery = {};
+    state_->config.allowJobTermination = {};
     cancel();
     if (state_->busy && state_->directory)
         state_->directory->setAutoRemove(false);
@@ -155,6 +163,8 @@ bool CadImportProcess::start(const QString &input, Completion completion)
 #endif
     s.output = s.directory->filePath(QStringLiteral("result.json"));
     s.logs = 0; s.stopError.clear(); s.stopping = false; s.confined = false;
+    s.treeConfirmed = false;
+    s.exitBudget.invalidate();
     s.completion = std::move(completion);
     s.busy = true;
     const quint64 operation = ++s.generation;
@@ -225,20 +235,81 @@ void CadImportProcess::stop(const QString &error)
     const quint64 operation = s.generation;
     s.stopping = true; s.stopError = error; s.error = error;
     s.deadline.stop(); s.outputWatch.stop();
-#ifdef Q_OS_WIN
-    if (s.job) TerminateJobObject(s.job->handle, 1);
-#endif
+    s.exitBudget.start();
+    if (!terminateJob()) return;
     if (s.process.state() != QProcess::NotRunning) {
         const QPointer<CadImportProcess> owner(this);
         s.process.kill();
-        s.process.waitForFinished(3000);
+        s.process.waitForFinished(std::max(0, s.config.exitConfirmationMs - int(s.exitBudget.elapsed())));
         if (!owner) return;
     }
     if (s.generation != operation) return;
-    if (s.process.state() == QProcess::NotRunning && s.busy)
+    if (s.process.state() == QProcess::NotRunning && s.busy
+        && confirmTreeEmpty(std::max(0, s.config.exitConfirmationMs - int(s.exitBudget.elapsed()))))
         complete({}, error);
-    else if (s.busy)
-        s.error = error + QStringLiteral(" 进程退出尚未确认，临时输出已保留；禁止再次导入。");
+    else if (s.busy && s.process.state() != QProcess::NotRunning)
+        retainUnconfirmed(error + QStringLiteral(" 主进程退出尚未确认。"));
+}
+
+void CadImportProcess::retainUnconfirmed(const QString &error)
+{
+    auto &s = *state_;
+    s.stopping = true;
+    s.deadline.stop(); s.outputWatch.stop();
+    s.error = error + QStringLiteral(" 转换进程树退出尚未确认，临时输出已保留；禁止再次导入。请重试取消。");
+}
+
+bool CadImportProcess::terminateJob()
+{
+#ifdef Q_OS_WIN
+    auto &s = *state_;
+    if (s.job && ((s.config.allowJobTermination && !s.config.allowJobTermination())
+        || !TerminateJobObject(s.job->handle, 1))) {
+        retainUnconfirmed(QStringLiteral("无法终止本次CAD转换进程树。"));
+        return false;
+    }
+#endif
+    return true;
+}
+
+bool CadImportProcess::confirmTreeEmpty(int budgetMs)
+{
+    auto &s = *state_;
+    if (s.process.state() != QProcess::NotRunning) return false;
+#ifdef Q_OS_WIN
+    if (s.job) {
+        QElapsedTimer budget; budget.start();
+        bool terminationRequested = false;
+        for (;;) {
+            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
+            if ((s.config.allowJobQuery && !s.config.allowJobQuery())
+                || !QueryInformationJobObject(s.job->handle, JobObjectBasicAccountingInformation,
+                                              &accounting, sizeof(accounting), nullptr)) {
+                retainUnconfirmed(QStringLiteral("无法查询本次CAD转换进程树的活动进程数。"));
+                return false;
+            }
+            // 主QProcess退出不能证明孙进程退出；唯有本Job的ActiveProcesses为零才能读结果/释放目录。
+            if (accounting.ActiveProcesses == 0) { s.treeConfirmed = true; return true; }
+            // Windows退出信号可能先于Job计数更新；从未创建子进程的Job先等待计数归零，避免误判主退出。
+            if (!terminationRequested && accounting.TotalProcesses > 1) {
+                s.stopping = true;
+                if (s.stopError.isEmpty())
+                    s.stopError = QStringLiteral("CAD主进程退出后仍有子进程，转换已取消；原设备保留。");
+                if (!terminateJob()) return false;
+                terminationRequested = true;
+            }
+            if (budget.elapsed() >= budgetMs) {
+                retainUnconfirmed(QStringLiteral("等待本次CAD转换进程树清空超时。"));
+                return false;
+            }
+            Sleep(DWORD(std::min(5, std::max(1, budgetMs - int(budget.elapsed())))));
+        }
+    }
+#else
+    Q_UNUSED(budgetMs)
+#endif
+    s.treeConfirmed = true;
+    return true;
 }
 
 bool CadImportProcess::cancel()
@@ -262,6 +333,11 @@ void CadImportProcess::finish(int exitCode, bool normalExit)
     drain();
     if (!owner) return;
     if (!s.busy || s.generation != operation) return;
+    // stop的waitForFinished会同步触发finished，退出确认由stop统一使用同一总预算。
+    if (s.stopping) return;
+    s.deadline.stop(); s.outputWatch.stop();
+    s.exitBudget.start();
+    if (!confirmTreeEmpty(s.config.exitConfirmationMs)) return;
     if (s.stopping) { complete({}, s.stopError); return; }
     if (!normalExit || exitCode != 0) {
         complete({}, QStringLiteral("CAD转换失败（退出码%1）；原设备和资料保留。").arg(exitCode)); return;
@@ -284,6 +360,17 @@ void CadImportProcess::complete(QByteArray bytes, const QString &error)
 {
     auto &s = *state_;
     if (!s.busy || s.process.state() != QProcess::NotRunning) return;
+    if (!s.exitBudget.isValid()) s.exitBudget.start();
+    if (!s.treeConfirmed && !confirmTreeEmpty(s.config.exitConfirmationMs)) return;
+    // 即使Job活动数已归零，Windows句柄释放/安全软件扫描仍可能短暂阻止删除；不能假报已释放。
+    while (s.directory && !s.directory->remove()) {
+        if (s.exitBudget.elapsed() >= s.config.exitConfirmationMs) {
+            s.deadline.stop(); s.outputWatch.stop(); s.stopping = true;
+            s.error = QStringLiteral("CAD进程树已清空，但临时结果目录无法释放；资料保留，请重试取消。");
+            return;
+        }
+        QThread::msleep(5);
+    }
     s.deadline.stop(); s.outputWatch.stop();
     s.busy = false; s.confined = false; s.error = error;
     ++s.generation;

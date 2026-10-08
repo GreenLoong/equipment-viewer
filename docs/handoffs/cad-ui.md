@@ -19,3 +19,13 @@ Controller::importCadResult严格Parser→Repository原子save→完整load后�
 真实worker后续并发变化：之前两轮3.14.8真实轴承和电机均成功；最后一次轴承仍成功，电机却exit1并保留旧资料，已报告主管请worker负责人检查，未将此前成功作为最新worker验收结论。Qt源码不修改主worker，实际输入SHA与测试环境未变。
 
 未验证：独立审查尚待主管安排，POSIX未运行；当前Scene只有R07，无mesh显示实现，画基础几何不能算CAD验收；组合gfx后root执行真实CAD原生显示。正常用户数据库未打开/迁移，真实用户验收未发生。Repository成功提交后完整load如果遭磁盘读取故障，旧显示保留但新有效设备已保存，提示明确“已保存但打开失败”，不能声称已回滚提交。worker混合实体与开放面的边界独审整改由worker负责人完成，不在本树范围。
+
+## 独审后的进程树退出边界补强
+
+63d15a4后独审指出主QProcess NotRunning不能证明Job内孙进程清空。已落盘补强：任何结果读取和目录释放之前查询自有Job的BasicAccounting.ActiveProcesses==0；有残留则TerminateJobObject并在取消统一最多3秒预算内重复查询，未确认保持busy/Job/temp和可读错误，拒绝后续start。不以Job等待句柄信号替代活动数。发现残留的转换即使worker exit0也作为失败，不读取输出/不导入。
+
+新增仅受控Config故障钩子allowJobQuery/allowJobTermination，false只制造自身真实API失败，无PID/handle外泄、不能伪造active0；析构清故障钩子并实际清理自有Job。新Windows测试主exit0后真实孙进程持result/cwd，覆盖正常清树/查询失败/终止失败保留/retry恢复，临时库旧设备不变；已实际运行通过，不用旧16pass覆盖新边界。
+
+新边界实际检查进展：已重编，Windows新真实父exit0/孙持文件与cwd、query/terminate故障保留/恢复、带故障状态owner销毁均实际通过。发现Windows主退出信号可能先于Job计数更新，只有一个累计进程时等待计数归零，累计创建过子进程且仍活动则终止本Job。首次强制子树回归还发现QTemporaryDir析构删除可能未成功，改为ActiveProcesses0之后显式remove成功才放行，按同一退出预算短暂重试，失败保留busy/job/temp。随后受控测试连续3轮exit0。
+
+最终冻结Worker（主管提供88735）轴承/Yellow6真实流程exit0：轴承1实体1444顶点1428三角，Yellow6实体4162顶点4332三角，均严格parser→临时SQLite→重启读回通过。新实现完整16CTest实际全通过23.13秒（cad_import_process含新父退出后孙留存与故障恢复，5.56秒）；未运行CAD原生图形窗口。对析构时真实Windows API持续失败的极端情况只能有界尝试后RAII关闭KILL_ON_JOB_CLOSE并保留临时目录，不声称已验证整个系统异常时的退出。测试只模拟自身Job API失败，未扫描/终止未知Python。

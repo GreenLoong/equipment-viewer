@@ -178,9 +178,12 @@ bool cancelTimeoutAndOwner()
         ++completed;
         if (!reusable.start(fixture.input, [&](QByteArray bytes, QString error) {
             if (!bytes.isEmpty() && error.isEmpty()) ++completed;
+            else QTextStream(stderr) << "Reuse result: " << error << Qt::endl;
         })) completed = -1;
     }));
-    CHECK(until([&] { return completed >= 2 || completed < 0; })); CHECK(completed == 2);
+    const bool reused = until([&] { return completed >= 2 || completed < 0; });
+    if (!reused) QTextStream(stderr) << "Reuse pending: " << reusable.lastError() << Qt::endl;
+    CHECK(reused); CHECK(completed == 2);
 #ifdef Q_OS_WIN
     // worker创建受控孙进程，取消必须终止整个Job而不操作其他Python。
     CHECK(fixture.initialize("child=subprocess.Popen([sys.executable,'-I','-c','import time;time.sleep(10)'])\n"
@@ -214,6 +217,8 @@ bool windowFlow()
     CHECK(controller.selectPart("p") && controller.hideSelected());
     CHECK(controller.equipment()->id == "old"); // 转换等待期间业务交互仍可执行。
     CHECK(until([&] { return !window.cadImportInProgress(); }));
+    if (controller.equipment()->id != "CAD-" + QString(64, 'a'))
+        QTextStream(stderr) << "Window import result: " << window.findChild<QLabel *>("equipmentStatus")->text() << Qt::endl;
     CHECK(controller.equipment()->id == "CAD-" + QString(64, 'a'));
     auto *list = window.findChild<QListWidget *>("partsList"); list->setCurrentRow(0);
     CHECK(window.findChild<QLabel *>("shape")->text() == QStringLiteral("CAD曲面网格"));
@@ -241,6 +246,91 @@ bool windowFlow()
     CHECK(closing->close() && !closing->cadImportInProgress());
     QTest::qWait(100); CHECK(controller.equipment()->id == "old");
     QList<Equipment> saved; CHECK(repository.loadEquipment(saved) && saved.size() == 3);
+    return true;
+}
+
+bool wholeTreeExitBoundary()
+{
+#ifdef Q_OS_WIN
+    Fixture fixture;
+    // 主转换器给出合法结果后exit0，真实孙进程持有result和cwd；不能把主退出当全树退出。
+    const QByteArray childCode = "import os,pathlib,sys,time;f=open(sys.argv[1],'rb');"
+        "os.chdir(pathlib.Path(sys.argv[1]).parent);pathlib.Path(sys.argv[2]).write_text(str(os.getpid()));time.sleep(10)";
+    const QByteArray body = fixture.resultCode()
+        + "child=subprocess.Popen([sys.executable,'-I','-c'," + QJsonDocument(QJsonArray{QString::fromUtf8(childCode)})
+            .toJson(QJsonDocument::Compact).mid(1).chopped(1)
+        + ",a.output,a.input+'.child'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n"
+        "pathlib.Path(a.input+'.output').write_text(a.output)\n"
+        "while not pathlib.Path(a.input+'.child').exists(): time.sleep(0.005)\n"
+        "time.sleep(0.15)\n";
+    for (int failure : {0, 1, 2}) {
+        CHECK(fixture.initialize(body));
+        QFile::remove(fixture.input + ".child"); QFile::remove(fixture.input + ".output");
+        bool permit = false;
+        fixture.config.exitConfirmationMs = 100;
+        if (failure == 1) fixture.config.allowJobQuery = [&] { return permit; };
+        if (failure == 2) fixture.config.allowJobTermination = [&] { return permit; };
+        EquipmentRepository repository;
+        CHECK(repository.openDatabase(fixture.temp.filePath(QStringLiteral("tree-%1.sqlite").arg(failure)))
+              && repository.initialize());
+        EquipmentController controller(repository); CHECK(controller.importJson(oldEquipment()));
+        CadImportProcess process(fixture.config);
+        int callbacks = 0; QByteArray received; QString error;
+        CHECK(process.start(fixture.input, [&](QByteArray bytes, QString message) {
+            received = bytes; error = message; ++callbacks;
+            if (message.isEmpty()) controller.importCadResult(bytes);
+        }));
+        CHECK(until([&] { return QFileInfo::exists(fixture.input + ".child"); }));
+        QFile pid(fixture.input + ".child"); CHECK(pid.open(QIODevice::ReadOnly));
+        HANDLE ownedChild = OpenProcess(SYNCHRONIZE, FALSE, pid.readAll().toUInt()); pid.close();
+        CHECK(ownedChild != nullptr);
+        QFile outputFile(fixture.input + ".output"); CHECK(outputFile.open(QIODevice::ReadOnly));
+        const QString output = QString::fromUtf8(outputFile.readAll()); outputFile.close();
+        const QString directory = QFileInfo(output).absolutePath();
+        if (failure == 0) {
+            CHECK(until([&] { return callbacks > 0; }));
+            CHECK(callbacks == 1 && received.isEmpty() && !error.isEmpty() && !process.isBusy());
+            CHECK(WaitForSingleObject(ownedChild, 0) == WAIT_OBJECT_0);
+            CHECK(!QFileInfo::exists(directory));
+        } else {
+            CHECK(until([&] { return process.processId() == 0; }));
+            CHECK(process.isBusy() && callbacks == 0 && received.isEmpty());
+            CHECK(QFileInfo::exists(directory) && QFileInfo::exists(output));
+            CHECK(process.lastError().contains(QStringLiteral("退出尚未确认")));
+            CHECK(WaitForSingleObject(ownedChild, 0) == WAIT_TIMEOUT);
+            CHECK(!process.start(fixture.input, {}));
+            CHECK(!process.cancel());
+            CHECK(process.isBusy() && callbacks == 0 && QFileInfo::exists(directory));
+            permit = true;
+            CHECK(process.cancel());
+            CHECK(until([&] { return callbacks == 1; }));
+            CHECK(received.isEmpty() && !error.isEmpty() && !process.isBusy());
+            CHECK(WaitForSingleObject(ownedChild, 0) == WAIT_OBJECT_0);
+            CHECK(!QFileInfo::exists(directory));
+        }
+        CloseHandle(ownedChild);
+        CHECK(controller.equipment()->id == "old");
+        QList<Equipment> saved; CHECK(repository.loadEquipment(saved) && saved.size() == 2);
+    }
+    CHECK(fixture.initialize(body));
+    QFile::remove(fixture.input + ".child"); QFile::remove(fixture.input + ".output");
+    fixture.config.allowJobQuery = [] { return false; };
+    bool callbackAfterDestroy = false;
+    auto owner = std::make_unique<CadImportProcess>(fixture.config);
+    CHECK(owner->start(fixture.input, [&](QByteArray, QString) { callbackAfterDestroy = true; }));
+    CHECK(until([&] { return QFileInfo::exists(fixture.input + ".child") && owner->processId() == 0; }));
+    QFile pid(fixture.input + ".child"); CHECK(pid.open(QIODevice::ReadOnly));
+    HANDLE child = OpenProcess(SYNCHRONIZE, FALSE, pid.readAll().toUInt()); pid.close();
+    CHECK(child != nullptr);
+    QFile outputPath(fixture.input + ".output"); CHECK(outputPath.open(QIODevice::ReadOnly));
+    const QString directory = QFileInfo(QString::fromUtf8(outputPath.readAll())).absolutePath(); outputPath.close();
+    CHECK(owner->isBusy() && QFileInfo::exists(directory));
+    owner.reset();
+    const DWORD exited = WaitForSingleObject(child, 3000); CloseHandle(child);
+    CHECK(exited == WAIT_OBJECT_0 && !QFileInfo::exists(directory));
+    QTest::qWait(50); CHECK(!callbackAfterDestroy);
+    QTextStream(stdout) << "Windows owned Job ActiveProcesses=0: child-after-exit / query-failure / terminate-failure / retry / destroy accepted=1" << Qt::endl;
+#endif
     return true;
 }
 
@@ -290,7 +380,8 @@ int main(int argc, char **argv)
         QTextStream(stderr) << "Set EQUIPMENT_CAD_PYTHON to a trusted absolute Python runtime." << Qt::endl;
         return 2;
     }
-    if (!successAndRepository() || !failureCases() || !cancelTimeoutAndOwner() || !windowFlow()) return 1;
+    if (!successAndRepository() || !failureCases() || !cancelTimeoutAndOwner()
+        || !wholeTreeExitBoundary() || !windowFlow()) return 1;
     const QStringList arguments = application.arguments();
     for (const auto &option : {QStringLiteral("--actual-bearing"), QStringLiteral("--actual-motor")}) {
         const int index = arguments.indexOf(option);
