@@ -29,3 +29,5 @@ Controller::importCadResult严格Parser→Repository原子save→完整load后�
 新边界实际检查进展：已重编，Windows新真实父exit0/孙持文件与cwd、query/terminate故障保留/恢复、带故障状态owner销毁均实际通过。发现Windows主退出信号可能先于Job计数更新，只有一个累计进程时等待计数归零，累计创建过子进程且仍活动则终止本Job。首次强制子树回归还发现QTemporaryDir析构删除可能未成功，改为ActiveProcesses0之后显式remove成功才放行，按同一退出预算短暂重试，失败保留busy/job/temp。随后受控测试连续3轮exit0。
 
 最终冻结Worker（主管提供88735）轴承/Yellow6真实流程exit0：轴承1实体1444顶点1428三角，Yellow6实体4162顶点4332三角，均严格parser→临时SQLite→重启读回通过。新实现完整16CTest实际全通过23.13秒（cad_import_process含新父退出后孙留存与故障恢复，5.56秒）；未运行CAD原生图形窗口。对析构时真实Windows API持续失败的极端情况只能有界尝试后RAII关闭KILL_ON_JOB_CLOSE并保留临时目录，不声称已验证整个系统异常时的退出。测试只模拟自身Job API失败，未扫描/终止未知Python。
+
+主管主集成build/ctest-cad-integrated-final.log随后报告旧self-delete测试line175 until(deleted)失败。该条件只看成功标记，错误回调会销毁owner却不设deleted，不能从timeout断言“回调未投递”。本树仅补测试诊断notified/error/pending，产品不改；实际指定主build/bin/cad-runtime/python.exe后单target重编/运行一次exit0，未复现。主build/runtime根payload文件SHA与source一致，不能据此把故障归于runtime。原失败log保留，由主管集成诊断后单target复验；不把未复现写为问题已消除。

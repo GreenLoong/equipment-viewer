@@ -168,11 +168,17 @@ bool cancelTimeoutAndOwner()
     // 完成通知已脱离QProcess信号栈，可直接销毁拥有者或开始下一次导入。
     CHECK(fixture.initialize(fixture.resultCode()));
     bool deleted = false;
+    bool notified = false;
+    QString destructionError;
     auto selfDeleting = std::make_unique<CadImportProcess>(fixture.config);
     CHECK(selfDeleting->start(fixture.input, [&](QByteArray bytes, QString error) {
+        notified = true; destructionError = error;
         deleted = !bytes.isEmpty() && error.isEmpty(); selfDeleting.reset();
     }));
-    CHECK(until([&] { return deleted; })); CHECK(!selfDeleting);
+    const bool completedNotification = until([&] { return notified; });
+    if (!deleted) QTextStream(stderr) << "Self destruction result: " << destructionError
+        << "; pending=" << (selfDeleting ? selfDeleting->lastError() : QStringLiteral("owner destroyed")) << Qt::endl;
+    CHECK(completedNotification && deleted); CHECK(!selfDeleting);
     CadImportProcess reusable(fixture.config); int completed = 0;
     CHECK(reusable.start(fixture.input, [&](QByteArray, QString) {
         ++completed;
