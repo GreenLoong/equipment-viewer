@@ -229,6 +229,46 @@ bool migration()
     CHECK(t.value("SELECT sql FROM sqlite_schema WHERE name='part'").toString()==partSchema());
     return true;
 }
+bool loadBudgetBeforeDecode()
+{
+    QTemporaryDir temp; CHECK(temp.isValid());
+    const QString path=temp.filePath("load-budget.sqlite");
+    Equipment equipment; QList<Part> parts; QString error;
+    CHECK(CadResultParser::parse(QJsonDocument(protocol()).toJson(),equipment,parts,error));
+    auto expanded=std::make_shared<MeshGeometry>(*parts[0].mesh);
+    expanded->vertices.resize(200001);
+    for(qsizetype i=3;i<expanded->vertices.size();++i) expanded->vertices[i]=expanded->vertices[0];
+    parts[0].mesh=expanded; parts[0].id="01";
+    QByteArray validBlob; CHECK(MeshGeometryCodec::encode(*expanded,validBlob,error));
+    MeshGeometry verified; CHECK(MeshGeometryCodec::decode(validBlob,verified,error));
+    EquipmentRepository repo; CHECK(repo.openDatabase(path)); CHECK(repo.initialize());
+    CHECK(repo.saveEquipmentWithParts(equipment,parts));
+    Inspector inspector; CHECK(inspector.open(path));
+    const QString fields=QStringLiteral("equipment_id,id,name,material,shape,position_x,position_y,position_z,"
+        "size_x,size_y,size_z,radius,length,mesh_blob,cad_source_name,cad_source_sha256");
+    for(const auto &id: {QStringLiteral("02"),QStringLiteral("03")}) {
+        QSqlQuery query(inspector.db);
+        CHECK(query.prepare(QStringLiteral("INSERT INTO part(%1) SELECT equipment_id,?,name,material,shape,"
+            "position_x,position_y,position_z,size_x,size_y,size_z,radius,length,mesh_blob,cad_source_name,"
+            "cad_source_sha256 FROM part WHERE equipment_id=? AND id='01'").arg(fields)));
+        query.addBindValue(id); query.addBindValue(equipment.id); CHECK(query.exec());
+    }
+    // 三行各为合法200001顶点BLOB，总600003；必须在第三行分配网格前报合计超限。
+    QList<Part> loaded=parts;
+    CHECK(!repo.loadParts(equipment.id,loaded)); CHECK(loaded.isEmpty());
+    CHECK(repo.lastError().contains("合计"));
+    // 第三行头/长度仍合法但payload含NaN；合计错误优先，证明没有进入第三行完整decode。
+    QByteArray invalidPayload=validBlob;
+    QDataStream stream(&invalidPayload,QIODevice::ReadWrite);
+    stream.setVersion(QDataStream::Qt_6_5); stream.setByteOrder(QDataStream::LittleEndian);
+    stream.setFloatingPointPrecision(QDataStream::DoublePrecision);
+    stream.device()->seek(12); stream << std::numeric_limits<double>::quiet_NaN();
+    QSqlQuery update(inspector.db);
+    CHECK(update.prepare("UPDATE part SET mesh_blob=? WHERE equipment_id=? AND id='03'"));
+    update.addBindValue(invalidPayload); update.addBindValue(equipment.id); CHECK(update.exec());
+    CHECK(!repo.loadParts(equipment.id,loaded)); CHECK(repo.lastError().contains("合计"));
+    return true;
+}
 bool converterInteroperability(const QStringList &probePaths)
 {
     QTemporaryDir temp;
@@ -280,8 +320,9 @@ int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
     const bool codec=parserAndCodec(), stored=persistence(), upgraded=migration();
+    const bool budget=loadBudgetBeforeDecode();
     const bool interoperable=converterInteroperability(app.arguments().mid(1));
     QTextStream(stdout)<<"ParserCodec="<<codec<<" Persistence="<<stored<<" Migration="<<upgraded
-                       <<" Interoperability="<<interoperable<<Qt::endl;
-    return codec&&stored&&upgraded&&interoperable ? 0 : 1;
+                       <<" Budget="<<budget<<" Interoperability="<<interoperable<<Qt::endl;
+    return codec&&stored&&upgraded&&budget&&interoperable ? 0 : 1;
 }

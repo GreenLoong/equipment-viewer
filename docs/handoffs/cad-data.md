@@ -32,3 +32,9 @@
 测试新增可选argv probe文件入口，源代码不含机器绝对路径。实际命令：`build/bin/cad_repository_tests.exe <bearing.json> <motor.json>`。2026-10-08重编该target成功，执行退出0：`608ZZ_Ball_Bearing.step parts=1 vertices=1444 triangles=1428 accepted=1`，`NEMA_17_with_connector.step parts=6 vertices=5709 triangles=5510 accepted=1`，`ParserCodec=1 Persistence=1 Migration=1 Interoperability=1`。
 
 真实结果经CadResultParser解析，存入本人QTemporaryDir临时SQLite，销毁原Repository后用新连接initialize/load，逐件比较完整ID/name/material/shape/position XYZ/bbox XYZ/source名SHA以及所有double vertices/uint32 triangles，均精确一致。重复SHA设备保存明确失败。bearing外包络22×22×约7mm/centre0；motor六件真实名称及非零placement保留。没有修改worker、正常数据库或主树数据接口；该技术互操作不替代原生CAD画面、模拟体验及独立审查。
+
+## R08-01审查修复：加载前核合计预算
+
+独立审查指出旧loadParts直到全部decode后才核合计资源，外部/损坏库多条各自合法网格可能先导致大量分配。最小修复：主查询仅取BLOB长度与12字节EVM1头；每行先核总part≤10000/CADpart≤1000及合法头/64位期望长度/单条限制，再累计vertices≤600000、triangles≤400000。只有预算内当前行才通过参数绑定查询完整BLOB并decode，读回BLOB头/长度必须与已核结果一致；超限即返回，不继续读后续行。公开接口和既有失败输出语义保持。
+
+受控回归只用QTemporaryDir：3行各自合法200001顶点BLOB（每条约4.8MiB），总600003，第三行在decode前报告合计超限。再将第三行payload首double改NaN且保留合法头/长度，仍优先报告合计错误，证明不进入第三行decode分配；不制造OOM。完整增量构建成功，13/13 CTest通过14.84秒；真实bearing/motor跨模块重启存取复验退出0，Budget=1/Interoperability=1。正常数据库未访问，修复待独立复审。

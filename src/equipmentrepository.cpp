@@ -9,6 +9,7 @@
 #include <QUuid>
 #include <QVariant>
 #include <QRegularExpression>
+#include <QtEndian>
 #include <cmath>
 
 namespace {
@@ -511,7 +512,8 @@ bool EquipmentRepository::loadParts(const QString &equipmentId, QList<Part> &par
     QSqlQuery query(database_);
     if (!query.prepare(QStringLiteral(
             "SELECT equipment_id,id,name,material,shape,position_x,position_y,position_z,"
-            "size_x,size_y,size_z,radius,length,mesh_blob,cad_source_name,cad_source_sha256 "
+            "size_x,size_y,size_z,radius,length,length(mesh_blob),substr(mesh_blob,1,12),"
+            "cad_source_name,cad_source_sha256 "
             "FROM part WHERE equipment_id = ? ORDER BY id"))) {
         error_ = QStringLiteral("准备零件查询失败：%1").arg(query.lastError().text());
         return false;
@@ -522,7 +524,18 @@ bool EquipmentRepository::loadParts(const QString &equipmentId, QList<Part> &par
         return false;
     }
     QList<Part> result;
+    quint64 vertexCount = 0, triangleCount = 0;
+    qsizetype meshCount = 0;
+    QSqlQuery blobQuery(database_);
+    if (!blobQuery.prepare(QStringLiteral("SELECT mesh_blob FROM part WHERE equipment_id=? AND id=?"))) {
+        error_ = QStringLiteral("准备网格读取失败：%1").arg(blobQuery.lastError().text());
+        return false;
+    }
     while (query.next()) {
+        if (result.size() >= 10000) {
+            error_ = QStringLiteral("读取设备零件数超过10000。");
+            return false;
+        }
         result.append({query.value(0).toString(), query.value(1).toString(),
                        query.value(2).toString(), query.value(3).toString(), query.value(4).toString(),
                        query.value(5).toDouble(), query.value(6).toDouble(), query.value(7).toDouble(),
@@ -531,15 +544,57 @@ bool EquipmentRepository::loadParts(const QString &equipmentId, QList<Part> &par
                        optionalValue(query.value(12))});
         Part &part = result.last();
         if (part.shape == QStringLiteral("mesh")) {
+            if (++meshCount > 1000) {
+                error_ = QStringLiteral("读取CAD零件数超过1000。");
+                return false;
+            }
+            // 主查询仅取长度和12字节头，先核合法计数与合计预算，再读取完整BLOB/分配网格。
+            const qint64 blobLength = query.value(13).toLongLong();
+            const QByteArray header = query.value(14).toByteArray();
+            if (header.size() != 12 || header.first(4) != "EVM1" || blobLength < 12
+                || quint64(blobLength) > MeshGeometryCodec::maxBytes) {
+                error_ = QStringLiteral("零件 %1/%2 的网格BLOB头或长度无效。").arg(equipmentId, part.id);
+                return false;
+            }
+            const auto *data = reinterpret_cast<const uchar *>(header.constData());
+            const quint32 vertices = qFromLittleEndian<quint32>(data + 4);
+            const quint32 triangles = qFromLittleEndian<quint32>(data + 8);
+            const quint64 expected = 12ULL + 24ULL * vertices + 12ULL * triangles;
+            if (!vertices || !triangles || vertices > MeshGeometryCodec::maxVertices
+                || triangles > MeshGeometryCodec::maxTriangles || expected != quint64(blobLength)
+                || expected > MeshGeometryCodec::maxBytes) {
+                error_ = QStringLiteral("零件 %1/%2 的网格BLOB计数或期望长度无效。").arg(equipmentId, part.id);
+                return false;
+            }
+            if (vertexCount + vertices > MeshGeometryCodec::maxVertices
+                || triangleCount + triangles > MeshGeometryCodec::maxTriangles) {
+                error_ = QStringLiteral("读取CAD合计顶点/三角形超过限制（零件 %1）。").arg(part.id);
+                return false;
+            }
+            vertexCount += vertices;
+            triangleCount += triangles;
+            blobQuery.bindValue(0, equipmentId); blobQuery.bindValue(1, part.id);
+            if (!blobQuery.exec() || !blobQuery.next()) {
+                error_ = QStringLiteral("零件 %1/%2 的网格读取失败：%3")
+                    .arg(equipmentId, part.id, blobQuery.lastError().text());
+                return false;
+            }
+            const QByteArray blob = blobQuery.value(0).toByteArray();
+            blobQuery.finish();
+            if (blob.size() != blobLength || blob.first(12) != header) {
+                error_ = QStringLiteral("零件 %1/%2 的网格读取与已检查头部不一致。").arg(equipmentId, part.id);
+                return false;
+            }
             auto mesh = std::make_shared<MeshGeometry>();
-            if (!MeshGeometryCodec::decode(query.value(13).toByteArray(), *mesh, error_)) {
+            if (!MeshGeometryCodec::decode(blob, *mesh, error_)) {
                 error_ = QStringLiteral("零件 %1/%2 的网格读取失败：%3").arg(equipmentId, part.id, error_);
                 return false;
             }
             part.mesh = std::move(mesh);
-            part.cadSourceName = query.value(14).toString();
-            part.cadSourceSha256 = query.value(15).toString();
-        } else if (!query.value(13).isNull() || !query.value(14).isNull() || !query.value(15).isNull()) {
+            part.cadSourceName = query.value(15).toString();
+            part.cadSourceSha256 = query.value(16).toString();
+        } else if (!query.value(13).isNull() || !query.value(14).isNull()
+                   || !query.value(15).isNull() || !query.value(16).isNull()) {
             error_ = QStringLiteral("基本几何零件 %1 含意外CAD数据。").arg(part.id);
             return false;
         }
