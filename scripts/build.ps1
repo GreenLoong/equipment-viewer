@@ -42,6 +42,10 @@ try {
         (Join-Path $binDir 'demo_tests.exe')
     if ($LASTEXITCODE -ne 0) { throw '测试运行依赖部署失败。' }
 
+    if (Test-Path -LiteralPath (Join-Path $projectRoot 'src/cadimportprocess.cpp')) {
+        & (Join-Path $PSScriptRoot 'sync-cad-runtime.ps1') -Destination (Join-Path $binDir 'cad-runtime')
+    }
+
     & $ctest --test-dir $buildDir --output-on-failure
     if ($LASTEXITCODE -ne 0) { throw '自动检查失败。' }
     Write-Host "构建和检查完成：$(Join-Path $binDir 'qt_sqlite_demo.exe')"

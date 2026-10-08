@@ -16,6 +16,10 @@
 
 ## 当前进行0.8（本节优先于后方保留历史）
 
+最新门槛：新canonical runtime .runtime/cad-distribution/cad-runtime已prepare，旧pip目录未动。完整scripts/build最终16CTest23.75秒通过（build/build-0.8-final.log），模拟用户42EA测试默认新runtime两平台CAD+临时SQLite onlinebackup/restore/新Repository网格指纹全部接受，完整新实屏图在build/cad-user-native-default，原裁切图不作证据。正常API运行仍0.7，源码磁盘0.8未发布。
+
+runtime独审发现R08-R01：未知unchecked-hash字节码缓存可以覆盖已核源码。主管最小删除verify缓存白名单，setup新SHA0ABD3A067E1250B7014984C7ACBF090544E24707398C897686413FD013EB9BA6，sync66D94479未改；新empty build/bin/cad-runtime同步成功，旧6F目录保存.recovery/runtime/20261009-055427/cad-runtime；同fixture独证待关闭才发布。review_v1独审此边界及0.9新Node资源test（FF78D39E，5批15cycle270真HTTP，活动socket/task/listener/libuv回基线、heap+517648仅观察），源码业务及U01/W01已通过。backend_stability两文件已落盘、实跑6.64秒过，待独审不称已完成0.9。
+
 最新恢复检查点：主树已合入CAD数据c06bbb9/b8acea2/09225fe/b9c8ae5、图形118e1b4、UI10c0236与Job完整退出修正dd149bc。版本文件暂设0.8.0，尚未发布；GitHub稳定仍0.7。worker88735E2C独审14/14及原mixed负例通过，R08-W01已关闭；受支持电机改Yellow六闭实体，旧NEMA另含开放壳必须拒绝，不交付部分模型。
 
 本地检查点cbdc651保存完整CAD worker/支持样例与版本文档；.gitattributes将STEP标binary，Git对象SHA与下载原文一致，禁止换行转换改变源身份。8ca9a11仅增加self-delete测试的通知/error诊断，业务没改，原失败日志保留，单目标复验中；无新版远端发布。

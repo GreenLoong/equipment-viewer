@@ -31,6 +31,9 @@ foreach ($plugin in @('platforms','sqldrivers','styles','imageformats','iconengi
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'samples') -Destination (Join-Path $bundle 'samples') -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\user-guide.md') -Destination (Join-Path $bundle '使用说明.md')
+if ([version]$actualVersion -ge [version]'0.8.0') {
+    & (Join-Path $PSScriptRoot 'sync-cad-runtime.ps1') -Destination (Join-Path $bundle 'cad-runtime')
+}
 $launch = @'
 @echo off
 cd /d "%~dp0"

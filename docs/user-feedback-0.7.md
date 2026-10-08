@@ -24,7 +24,7 @@ Scene负责投影与标尺，不读取SQL；Controller为隔离/显隐唯一状�
 
 ### 0.8技术验证后的冻结设计
 
-采用Windows独立CPython3.12进程与OCP novtk/proxy7.9.3.1，不将MSVC CAD库链接MinGW Qt。已校验官方PyPI轮包SHA并检查metadata/导入代码，无安装启动脚本；安装只在忽略的.runtime/cad-python/site-packages。轴承STEP实际1实体约22×22×7mm，电机STEP实际6实体，绝不是手工创建包围盒替代模型。
+技术验证使用Windows独立CPython3.12与OCP novtk/proxy7.9.3.1；实际交付改为已签名的CPython3.14.8嵌入式及匹配cp314轮包，独立进程架构不变，不将MSVC CAD库链接MinGW Qt。官方归档SHA及逐文件库存已核，新canonical为忽略的.runtime/cad-distribution/cad-runtime；旧技术目录保留。正式样例为608ZZ轴承1实体约22×22×7mm和Yellow减速电机6闭实体。旧NEMA另有4开放壳，整份拒绝，不再用其部分实体作为成功资格。
 
 转换器读取STEP实体（包括已放置的装配实体）并以毫米传递，按实体输出真实面三角化。一个实体对应一条零件；有名称则保留，否则明确使用“实体0001”等生成名称，材料未提供时显示“未提供”。位置为全局外包络中心，尺寸为全局XYZ外包络，非质量中心或制造标注；曲面网格显示采用有限离散精度。开放曲面/无实体及格式错误拒绝。
 

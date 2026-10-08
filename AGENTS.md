@@ -21,7 +21,7 @@
 ## 环境与入口
 
 - Qt6.11.1 MinGW64、GCC13.1.0、CMake3.30.5、Ninja1.12.1、QSQLITE SQLite3.53.0；OpenGL/OpenGLWidgets已接入，不混用MSVC。
-- scripts/build.ps1：重新配置、构建、部署运行库和当前主树14项CTest；CAD树额外测试单列，以实际CMake为准。PowerShell脚本保留UTF-8 BOM以兼容5.1。
+- scripts/build.ps1：重新配置、构建、部署Qt及私有CAD运行库、当前主树16项CTest；真实CAD/资源专项单列，以实际CMake为准。先用明确受信Python执行tools/cad/setup_runtime.py prepare；新canonical .runtime/cad-distribution/cad-runtime，旧legacy保留。PowerShell脚本保留UTF-8 BOM以兼容5.1。
 - 启动设备查看器.cmd或scripts/run.ps1 -EquipmentView打开设备；启动示例.cmd仍打开原记录窗口。--database可指定文件，--equipment-check只输出数据后退出。
 - build/bin/scene_tests.exe -platform windows --snapshot-dir <目录>：真实图形验证；offscreen检查是软件回退，不代替原生OpenGL。
 - scripts/package.ps1 -OutputRoot <目录>：只复制运行文件、插件、虚构样例和指南到独立交付目录，不复制正常data或凭证。
