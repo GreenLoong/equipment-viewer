@@ -3,6 +3,8 @@
 #include "equipmentrepository.h"
 
 #include <QSet>
+#include <QList>
+#include <QPointF>
 #include <QWidget>
 #include <functional>
 #include <memory>
@@ -24,6 +26,19 @@ public:
     void fitAll();
     /** 返回当前渲染方式及回退原因。 */
     QString rendererDescription() const;
+    /** 当前画面的毫米标注；空 axis 为中心截面比例尺，XYZ 为选中件外包络。
+     *  start/end 使用画布逻辑像素；lineVisible=false 时只显示数值，避免短投影误导。
+     *  数值使用 long double，避免极端圆柱外径乘二溢出 double。 */
+    struct MeasurementAnnotation {
+        QString axis;
+        QString label;
+        long double millimeters = 0;
+        QPointF start;
+        QPointF end;
+        bool lineVisible = false;
+    };
+    /** 返回当前可见标注副本；空场景、范围错误或全部隐藏时为空。 */
+    QList<MeasurementAnnotation> measurementAnnotations() const;
     /** 短点击回传零件 ID；空白处回传空 ID，用于清除选择。 */
     std::function<void(const QString &)> onPartPicked;
 
