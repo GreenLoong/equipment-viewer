@@ -451,7 +451,8 @@ SceneView::SceneView(QWidget *parent) : QWidget(parent), impl_(std::make_unique<
                 surface->setObjectName(QStringLiteral("sceneCanvas"));
                 surface->installEventFilter(this);
                 impl_->layout->addWidget(surface);
-                gl->deleteLater();
+                // 回退后旧控件仍借用SceneData；立即释放，避免外层析构后延迟GL清理。
+                delete gl;
             });
         };
         gl->failed = fallback;
@@ -483,16 +484,39 @@ void SceneView::setParts(const QList<Part> &parts)
     data.hidden.clear();
     data.selected.clear();
     long double divisor = 1;
-    if (parts.size() > 10000)
+    if (parts.size() > 10000) {
         data.error = QStringLiteral("三维场景超过10000个零件限制");
+        fitAll();
+        return;
+    }
+    quint64 meshVertices = 0, meshTriangles = 0;
     for (const auto &part : parts) {
+        const bool solidDimensions = positive(part.sizeX) && positive(part.sizeY) && positive(part.sizeZ);
         const bool shapeValid = part.shape == QStringLiteral("box")
-            ? positive(part.sizeX) && positive(part.sizeY) && positive(part.sizeZ)
+            ? solidDimensions
+            : part.shape == QStringLiteral("mesh") ? solidDimensions && bool(part.mesh)
             : part.shape == QStringLiteral("cylinder") && positive(part.radius) && positive(part.length);
         if (!shapeValid || !std::isfinite(part.positionX) || !std::isfinite(part.positionY)
             || !std::isfinite(part.positionZ)) {
             data.error = QStringLiteral("零件 %1 的三维尺寸或位置无效").arg(part.id);
             break;
+        }
+        if (part.shape == QStringLiteral("mesh")) {
+            QString meshError;
+            meshVertices += quint64(part.mesh->vertices.size());
+            meshTriangles += quint64(part.mesh->triangles.size());
+            // Scene也能被直接调用；不能仅依赖导入器保证索引/有限坐标及资源预算。
+            if (meshVertices > MeshGeometryCodec::maxVertices || meshTriangles > MeshGeometryCodec::maxTriangles
+                || !MeshGeometryCodec::validate(*part.mesh, meshError)
+                || !MeshGeometryCodec::validateBounds(*part.mesh, {*part.sizeX, *part.sizeY, *part.sizeZ},
+                    {part.positionX, part.positionY, part.positionZ}, meshError)) {
+                data.error = QStringLiteral("零件 %1 的CAD网格无效：%2").arg(part.id,
+                    meshError.isEmpty() ? QStringLiteral("场景网格超过资源限制") : meshError);
+                break;
+            }
+            for (const auto &vertex : part.mesh->vertices)
+                for (double value : vertex)
+                    divisor = std::max(divisor, std::abs(static_cast<long double>(value)));
         }
         const std::array<double, 8> values = {part.positionX, part.positionY, part.positionZ,
             part.sizeX.value_or(0), part.sizeY.value_or(0), part.sizeZ.value_or(0),
@@ -510,13 +534,23 @@ void SceneView::setParts(const QList<Part> &parts)
     for (const auto &part : parts) {
         const std::array<double, 3> positions = {part.positionX, part.positionY, part.positionZ};
         // 先扩展精度再除二，保留合法double次正规尺寸，避免先在double中变成零。
-        const std::array<long double, 3> halves = part.shape == QStringLiteral("box")
+        const std::array<long double, 3> halves = part.shape != QStringLiteral("cylinder")
             ? std::array<long double, 3>{static_cast<long double>(*part.sizeX) / 2,
                 static_cast<long double>(*part.sizeY) / 2, static_cast<long double>(*part.sizeZ) / 2}
             : std::array<long double, 3>{static_cast<long double>(*part.length) / 2, *part.radius, *part.radius};
         for (int axis = 0; axis < 3; ++axis) {
             low[axis] = std::min(low[axis], positions[axis] / divisor - halves[axis] / divisor);
             high[axis] = std::max(high[axis], positions[axis] / divisor + halves[axis] / divisor);
+        }
+        // 源CAD外包络用于标注；离散曲面的允许公差可能略超出它，取并集保证视角容纳实画顶点。
+        if (part.shape == QStringLiteral("mesh")) {
+            for (const auto &vertex : part.mesh->vertices) {
+                for (int axis = 0; axis < 3; ++axis) {
+                    const long double coordinate = positions[axis] / divisor + vertex[axis] / divisor;
+                    low[axis] = std::min(low[axis], coordinate);
+                    high[axis] = std::max(high[axis], coordinate);
+                }
+            }
         }
     }
     long double span = 0;
@@ -539,7 +573,7 @@ void SceneView::setParts(const QList<Part> &parts)
     };
     // 与渲染相同的float顶点必须仍能表达每件XYZ跨度；否则标线不能声称显示了真实尺寸。
     for (const auto &part : parts) {
-        const std::array<long double, 3> dimensions = part.shape == QStringLiteral("box")
+        const std::array<long double, 3> dimensions = part.shape != QStringLiteral("cylinder")
             ? std::array<long double, 3>{*part.sizeX, *part.sizeY, *part.sizeZ}
             : std::array<long double, 3>{*part.length, 2 * static_cast<long double>(*part.radius),
                 2 * static_cast<long double>(*part.radius)};
@@ -574,7 +608,15 @@ void SceneView::setParts(const QList<Part> &parts)
                 triangle(part, vertices[face[0]], vertices[face[1]], vertices[face[2]]);
                 triangle(part, vertices[face[0]], vertices[face[2]], vertices[face[3]]);
             }
-        } else {
+        } else if (part.shape == QStringLiteral("mesh")) {
+            // vertices始终是局部毫米；与基础几何共用position+offset归一化，保留STEP装配位置。
+            QList<QVector3D> vertices;
+            vertices.reserve(part.mesh->vertices.size());
+            for (const auto &vertex : part.mesh->vertices)
+                vertices.append(point(part, vertex[0], vertex[1], vertex[2]));
+            for (const auto &indices : part.mesh->triangles)
+                triangle(part, vertices[indices[0]], vertices[indices[1]], vertices[indices[2]]);
+        } else if (part.shape == QStringLiteral("cylinder")) {
             constexpr int segments = 20;
             // 乘三角函数前提升半径，防止合法double次正规径向偏移先量化成零或失真后再归一化。
             const long double radius = static_cast<long double>(*part.radius);
