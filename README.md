@@ -2,7 +2,7 @@
 
 工业软件工作模拟项目：Qt/C++桌面查看设备和零件，SQLite保存本地资料，HTTP与MySQL提供团队共享库及工艺批注，Redis缓存不可变几何。
 
-**当前源码：1.0.0，最终包验收中。** 已发布[v0.9.0](https://github.com/GreenLoong/equipment-viewer/tree/v0.9.0)。功能与逐版证据见[1.0交付记录](docs/releases/1.0.md)，本项目为Windows桌面工作模拟Demo。
+**当前版本：[v1.0.0](https://github.com/GreenLoong/equipment-viewer/tree/v1.0.0)。** 已逐版完成0.3..0.9，再整合Windows桌面工作模拟Demo。功能、包与检查边界见[1.0交付记录](docs/releases/1.0.md)。
 
 ## 已交付能力
 
@@ -42,7 +42,7 @@ JSON支持box/cylinder；STEP读取闭合实体，独立开放面/壳/线与混�
 | 0.7 | 旋转方向、抗锯齿、隔离双击、视角回正与尺寸标尺 | 已发布 |
 | 0.8 | 真实机械STEP模型导入、显示与持久化 | 已发布 |
 | 0.9 | 有限资源检查、真实恢复、可复现运行库与验证入口 | 已发布 |
-| 1.0 | 前述阶段整合与最终交付 | 最终包验收中 |
+| 1.0 | 前述阶段整合与最终交付 | 已通过源码、包及模拟试用交付检查 |
 
 0.6实际验证包括12项CTest、38项Node纯检查、真实MySQL兼容回归、真实Redis TTL/坏值/超限/恢复，以及Windows与offscreen实际GUI验收。执行主体与限制见[0.6验证记录](docs/releases/0.6.md)。技术检查、自动模拟验收与真实用户验收分别记录，不声称零泄漏或其他电脑性能已验证。
 
@@ -63,3 +63,5 @@ JSON支持box/cylinder；STEP读取闭合实体，独立开放面/壳/线与混�
 - [历史README](docs/history/README-v0.2.md)：原0.2与F01教学记录。
 
 源码按Git提交和版本标签保留；运行数据库与私密配置另行备份，Git回退不能恢复数据库。不要删除正常库或使用 `reset --hard`/`clean` 丢弃未完成工作。Windows桌面包保存于本次聊天的本机outputs目录，不包含数据库和令牌。
+
+最终Windows包：`equipment-viewer-1.0.0-20261009-110210.zip`，解压后双击“启动设备查看器.cmd”；包已附Qt及私有CAD运行库。CMake/应用/API/锁文件均1.0.0，源码标签对应7f6fcadb2bd06fbaad8f689570eb152c37803a2a。新业务从实际反馈继续，三条非阻断Agent候选保存在simulated-feedback；真实用户验收与技术/模拟结果不混写。

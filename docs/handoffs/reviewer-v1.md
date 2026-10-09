@@ -549,3 +549,21 @@ SDK包含嵌入式Python/私有modules/worker/bootstrap/30许可+Python LICENSE/
 包使用说明data/viewer.sqlite与实际package launch命令核对一致，源码data/records.sqlite不同用途已在README明确。1.0已编译/正常API受控重启及只读health/status/404由主管执行，未将磁盘版本等同服务状态、没有本角色重复真实服务或正常库操作。final文档仍标包/远端待完成，不提前声称1.0发布。
 
 结论：当前1.0小diff/文档来源与scope独立审查通过，无源码阻断，可以生成最终包并提交实际meta供独核。未变化的旧fullsuite不无依据重跑；最终runtime库存、EXE/ZIP、原生启动及最终包模拟试用/远端检查点仍要对应新包记录，不用此前包结论套新artifact。
+
+## 1.0最终候选包独立metadata核对通过（110210，待最终试用记录）
+
+实际读取outputs/equipment-viewer-1.0.0-20261009-110210(.zip) manifest：1.0.0/source7f6fcadb2bd06fbaad8f689570eb152c37803a2a/clean/databaseIncluded=false，核对开始HEAD同7f6且无未提交。目录EXE/build EXE/ZIP逐文件流式核EXE同65E9BAF494575310D403DEE0AC956278D6AB53B5695B25F299D62F686C9EC79D，整体ZIP独立SHA C4F6E9ECDF828871769241CEB5A84D708BD9412424378009348C4E1C0C629C69。
+
+独立逐流核510个ZIP文件（511条目含目录）与实际目录SHA和集合相同；474个runtime文件含manifest逐SHA与已审0.9完全相同，473个manifest库存hash全匹配。SDK/worker/setup/许可/源码未变，继承先前已独核440官方制品与30许可正文。目录/ZIP扫描无DB/sqlite/key/pem/local配置/env/pyc/partial。build/reviewer-package-1.0.log accepted1，未重跑旧全suite或CAD。
+
+已独立查看1.0-package-startup.png：正常中文/默认三件模型、JSON-STEP/共享/回正入口；主管仅System32清Qt PATH运行bundle主EXE原生smoke退出0，运行主体准确记录。本角色包metadata独证通过，无静态包阻断；模拟用户一次最终包内runtime/两STEP/同源Qt GUIharness与临时SQLite恢复正在进行，尚未用metadata通过替代其结果。最终试用日志/图来源核对及远端tag仍待闭环。
+
+### 1.0最终包试用闭环与可发布独审结论
+
+已读新build/cad-package-1.0-native.log、simulated-cad最终单次交接，session23401实际exit0。清PATH只System32、实际bundle ASCII Python/modules/worker/两公共STEP、冻结同源Qt业务harness，非bundle主EXE直接CAD参数输入；该主EXE原生启动/smoke另有主管记录。本人另核harness/bundle Qt6Core/Widgets/Sql/OpenGLWidgets/Network五DLL SHA全部相同，证据对应同源渲染/窗口实现，未借系统Qt/PATH Python。
+
+新日志真实孔/外环鼠标/源SHA/毫米1、轴承1444v1428t、Yellow6实体4162v4332t/六中心、隔离/搜索/回正/失败保留/取消PID确认/CAD共享拒绝/旧JSON均1，原生FBO实际4；临时SQLite onlinebackup→restore→新Repository完整网格/source指纹和重启均1/publicStepInputs/acceptance1。模拟用户试用不冒充本人运行或真人再次验收，普通库/服务未操作，bundle data仍不存在。
+
+本人实际独看最终native01孔/02六件布局/08CAD共享本地拒绝/10新连接重开四张1320x820完整图：真实模型/高亮/毫米标尺、来源/外包络非制造标注与拒绝原因一致。用户预览1.0-CAD-preview.png与本次02实屏PNG独立SHA同F487F5FE36428872AB2483A642ACB5A2219B5E602D2DE3680336CCF2BA4BFD04，无合成或旧图替代。
+
+最终结论：1.0已审源码、source7f6最终包metadata/完整ZIP及SDK、不含资料秘密、主EXE原生启动与一次包内运行库/同源Qt GUI实际试用/临时恢复已闭环，独立审查通过，无当前已识别发布阻断。主管可按持续授权将v1.0.0指7f6并推main/feature，随后核远端再声明完成发布；本记录尚未替主管执行或预记push成功。长期生产/跨机器/复杂大装配/ASan/正常共享库恢复和真人再次验收保持已写限制，三个非阻断体验建议不扩本交付。

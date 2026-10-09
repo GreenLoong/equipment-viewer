@@ -99,3 +99,19 @@ build/bin/cad_user_tests.exe -platform windows --bearing <公开轴承.step> --a
 完成状态保持：真实公开轴承/Yellow6、默认runtime两平台、完整新原生图、同临时SQLite重开及onlinebackup/restore完整指纹已通过；旧预检失败/裁切图和有限资源计数均保留，不重跑整套、不删证据。三条Source可读性/错误文案/薄件查看建议为非阻断候选，不升级为新功能或阻止1.0。
 
 当前由主管完成0.8包独审/tag/main，然后0.9压力与恢复正式入口、最终1.0包。未指定最终bundle路径前，本角色不运行其他包、主构建或原生窗口，不接正常库/后台服务。最终只做一次已协调焦点的actual bundle内runtime/默认入口原生试用，用独立临时数据库核CAD指纹和受控恢复，结果与源码0.8验收、真人再次体验、独立包审查分别记录。包路径、命令入口与受控输出位置由主管明确后执行，不推测未提供路径或声称1.0已通过。
+
+## 最终1.0指定包单次核对完成
+
+主管指定actual bundle `C:/Users/23871/Documents/Codex/2026-10-07/new-chat/outputs/equipment-viewer-1.0.0-20261009-110210`（同名ZIP），manifest版本1.0.0、sourceCommit=7f6fcadb2bd06fbaad8f689570eb152c37803a2a、sourceHasUncommittedChanges=false、databaseIncluded=false。本角色独立Get-FileHash核包内主EXE为65E9BAF494575310D403DEE0AC956278D6AB53B5695B25F299D62F686C9EC79D，与manifest/主管提供值一致；试用后包data目录仍不存在。
+
+证据来源区别明确：包内主EXE在清Qt PATH下的原生默认启动/smoke由主管实际执行（1.0-package-startup.png）；本角色只一次使用冻结CPP42EA、与1.0相同Qt业务代码的 `build/bin/cad_user_tests.exe` 做真实控件试用，显式指向包内ASCII路径的python/site-packages/convert_step.py及包内两STEP。它不是包内主EXE直接接收CAD参数。Qt6Core/Widgets/Sql/OpenGLWidgets/Network五个harness旁DLL与bundle对应文件SHA各一致；PATH只System32、清Qt插件/Python/CAD环境，没有系统Qt或PATH Python依赖。
+
+本次命令为windows、bearing包samples/cad/608ZZ、assembly包Yellow_gearmotor_straight、expected6、原NEMA仍仅拒例，未加resource-cycles。日志 `build/cad-package-1.0-native.log`；session23401确认exit0，native焦点已向root释放。
+
+实际结果全部接受：真孔/外环鼠标拾取和来源尺寸、轴承1444v/1428t；六件4162v/4332t/六全局中心；搜索、双击隔离、旋转回正、坏/重复/NEMA保模型、Job取消PID0、CAD共享本地拒绝pending0、旧JSON仍可导、重启同临时SQLite网格指纹；包内Python实际onlinebackup→restore→新Repository核网格/名称/材料/source/位置尺寸指纹相同。原生实际FBO samples4；全部data在QTemporaryDir，正常库/服务未操作。
+
+本角色独立实际查看 `build/cad-package-1.0-native` 的01轴承、02装配、03薄轴隔离、08本地拒发布、10重新开库五张关键完整图：1320×820真实桌面客户区，当前frame(16,16,1320,851)在available1920×1032、DPR1；孔、六件布局/高亮、标尺、readonly来源/bbox和拒绝原因可读。未合成截图，未重复旧suite或资源批次。旧三个可读性/薄件建议仍非阻断候选，无新增业务或真人意见。
+
+按主管明确指令将02原PNG直接复制到 `C:/Users/23871/Documents/Codex/2026-10-07/new-chat/outputs/1.0-CAD-preview.png`，并核两文件SHA相同；供用户预览的是此次实际控件画面。此次1.0包内runtime/同源Qt业务试用及临时恢复通过，不代替主EXE启动证据、独立包审查或真人再次验收。本角色只改本文与授权预览副本，没有修改CPP、产品、bundle文件、模型、数据库或服务。
+
+预览SHA256为F487F5FE36428872AB2483A642ACB5A2219B5E602D2DE3680336CCF2BA4BFD04；同源测试EXE为7B37B6AB3516EA43DD443340F11BB2970704360AFD9FDD7D76D9409AF55E20BF。Windows平台与SQLite驱动插件 `platforms/qwindows.dll`、`sqldrivers/qsqlite.dll` 在harness旁/包内均存在且SHA相同；仅记录文件来源与PATH隔离，不额外宣称本角色完成系统模块加载追踪或整包安全审计。
