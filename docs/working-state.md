@@ -14,7 +14,19 @@
 
 包位于原聊天outputs独立时间戳目录；0.4 manifest对应aef7499、dirty=false，已清Qt环境原生smoke及独审通过。证据见docs/releases/0.4.md和review handoff。真实用户仅验收环境/记录与F01-1，后续不伪造用户验收。
 
-## 当前进行1.0（本节优先于后方保留历史）
+## 1.0已完成交付（本节优先于后方保留历史）
+
+2026-10-09最终：0.8、0.9、1.0已按顺序分别推送。v1.0.0 peeled7f6fcadb2bd06fbaad8f689570eb152c37803a2a；发布记录推送时main/feature均c402c76675596ebcc561fb8b9f4ca557f94466eb，atomic push及后续ls-remote退出0。本文属于后续恢复记录，若主分支再有文档提交以git log/远端为准，标签与包源码不变，禁止force。
+
+最终包outputs/equipment-viewer-1.0.0-20261009-110210(.zip)，manifest1.0.0/7f6/clean/noDB；EXE65E9BAF494575310D403DEE0AC956278D6AB53B5695B25F299D62F686C9EC79D，ZIPC4F6E9ECDF828871769241CEB5A84D708BD9412424378009348C4E1C0C629C69。独立510个ZIP文件/511条目与目录逐hash等，474 runtime与0.9相同、manifest473吻合；source/运行库/包/原生启动/一次最终包内CAD及临时恢复均通过，日志与执行主体见releases/1.0.md和各handoff。preview outputs/1.0-CAD-preview.png为真实02装配图原字节副本，SHAF487F5FE36428872AB2483A642ACB5A2219B5E602D2DE3680336CCF2BA4BFD04。
+
+当前无已识别交付阻断，真实用户仍只验收环境/记录/F01-1，新版真人体验没有伪造。Node有限GC堆递增约0.5MiB/没有ASan/跨机/Linux桌面/长期复杂装配未验证；源码和技术验收并不保证零泄漏。三条Agent非阻断建议（属性可读性、业务错误原因、聚焦薄件）留作1.1候选，不自动无限扩展。
+
+接手：先核Git干净状态和实际服务。最近API1.0.0前台session77296/PID69664/8765，MySQL项目3310/PID70128、Redis桥6380/session82732/PID64612；health/mysql up、鉴权cache ready/inFlight0已核，只有只读未知UUID诊断无正常资料插入。原MySQL80/WSL没动；session不保证跨app重启有效，不要按旧PID盲停。CodeCPP/worker/SDK已冻结，后续实际反馈再派新任务并独审；已完成阶段不重做。
+
+源码Git全部阶段检查点已保存并推送；正常records.sqlite在0.8升级前快照.recovery/databases/20261009-053034-777459，旧列demo3/equipment1/part3完全保留，F01另库未升级。ev_test和临时CAD恢复为受控验证，不是正常共享库已恢复；Git回退不得删除/覆盖资料。原独立Git工作树及legacy/runtime快照保留，不clean/递归删。
+
+## 1.0前次集成记录（历史，最终状态以上段为准）
 
 0.9已发布：main/feature最后远端5b9d4aea480578ce6e412bff615421fe39bfe837，v0.9.0 peeledfa82fd99656173d014562c16dcff175de165f613；atomic push与ls-remote确认退出0。包outputs/equipment-viewer-0.9.0-20261009-104701(.zip)，clean/noDB，EXE85339235AB0673EC9FEB3FA8D03EEAFD3477CC126235DD85D2DE29A584F84741；全部runtime与0.8相同、ZIP511条逐hash等目录，新主EXE清QtPATH原生smoke过及独立meta通过。Qt业务源未变；npm资源入口实际1/1/270请求过，heap+520568仍逐升不能称无增长。
 
