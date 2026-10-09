@@ -521,3 +521,11 @@ SDK包含嵌入式Python/私有modules/worker/bootstrap/30许可+Python LICENSE/
 已独立读build/cad-package-native.log全部验收结果和查看01真孔/02六件装配/10新SQLite重开三图：完整1320x820客户区，真实环孔/Yellow曲面、六件位置与毫米包络/来源明确，原生实际FBO samples4；CAD_SQLITE_RECOVERY onlinebackup/freshRepo精确mesh/source fingerprint及全部CAD_USER acceptance1。执行主体为主管使用包内Python/modules/worker与模型+当前同源Qt业务harness，不冒充bundle主EXE完成导入。bundle主EXE另由主管清Qt PATH只System32原生smoke退出0，已独立看0.8-package-startup.png正常启动。裸--version的GUI弹窗probe未当作控制台验证通过。
 
 结论：0.8已审源码与本候选包独立核对通过，无本版未关闭发布阻断，可依持续授权tag/push。W/U/R及数据三项均已闭，旧175单次测试失败和旧NEMA部分历史均保留且限制准确，后续正式默认/包内必要复验由对应角色记录。复杂极大CAD/跨机器/ASan及真人再次验收没有虚称完成。0.9仅已有资源检查、入口与版本文档/包变更按范围复核，不扩本阶段业务；最终1.0另核meta。
+
+## 0.9有限稳定性范围源码独审通过
+
+已实际独读从已发布0.8检查点之后的全部小diff：CMake project/main QApplication/server exportVersion/api package与lock顶及root package均0.9.0；依赖版本与其余锁节点不变，仅增npm test:resources= node --expose-gc --test test/resource.test.mjs。Qt/SQL/worker/API业务实现无新变更。resource.test仍FF78D39EB0B8116BA3DB33D3CCFB761B3D916897051BE3AD52C83A5D95D8F5FB，沿用已完成独审有效HTTP/受控Repo边界。
+
+独立读主管新入口实际build/node-resource-0.9-entry.log，1/1退出0、270请求，heap16512152→17029832/+517680仍递增。执行主体主管，未把旧6.640秒与当前18.342秒相混、不重复旧全suite/真实DB/正常服务。文档区分模拟/主管/独审、正常ev_shared未恢复、正常记录仅已授权backup后迁移保留、临时CAD/ev_test恢复以及有限资源观察；未写跨机/复杂模型/零泄漏已验证。
+
+源码结论：0.9当前有限资源检查入口、已验证范围整合与版本metadata独立通过，无源码阻断。新Qt EXE构建和0.9包尚待主管meta，不预记交付通过。已向主管提示最终release文档更新旧“0.8发布后/将提供npm命令”的待办语气，并把驱动/Qt缓存造成波动改为可能解释/原因未独立定位；此是证据用语准确性，不新增业务或重复测试要求。

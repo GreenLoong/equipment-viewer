@@ -10,6 +10,7 @@
 node tools/setup-mysql.mjs setup
 node src/server.mjs
 npm test
+npm run test:resources
 $env:EV_TEST_CONFIG_FILE = Join-Path (Get-Location) 'runtime/test.local.json'
 npm run test:integration
 ```
@@ -60,5 +61,7 @@ node tools/backup-mysql.mjs
 专门真实技术入口为`node --test test/cache-redis.integration.test.mjs`，不加入默认纯测试。首次执行先全文检查并协调Windows6380空闲；脚本只拥有自己的桥和随机namespace固定三个key，不使用MySQL、不scan/FLUSH、不停止LinuxRedis。已在实际7.4.7验证EX1/PTTL及1200ms实际到期、坏JSON/UTF8/几何/错ID、LIST与6MiB+1值原子Lua只返状态/定向DEL、guard保留、临时HTTP404不负缓存和自己桥暂停/恢复；结束ownedKeys=0/bridgeChildren=0/cleanup=1。HTTP404的Repository是受控替身，不能称作该项真MySQL；旧真实MySQL集成另行完整执行且4表已清理。
 
 最新默认npm test38/38、真实Redis技术1/1、旧MySQL缓存disabled兼容1/1通过。专职模拟用户的真Redis/真MySQL/GUI两平台证据由其单独台账记录。上述技术结果不代替主管发布检查与真实用户体验。
+
+0.9新增独立`npm run test:resources`入口：Node --expose-gc、真实随机端口HTTP、受控Repository，暖机后5批15次应用重建/270请求，验证成功/鉴权/异常/超时/断开/关闭收尾。socket/task与活动libuv回基线；GC堆值小样本逐批增加约0.5MiB，仅观察，不能称无泄漏。实际MySQL与Redis另有验证，资源入口不连接正常数据库或关闭服务，详见../docs/releases/0.9.md。
 
 备份管道失败会终止本次mysqldump并在5秒内等待真实close；未确认退出报DUMP_EXIT_UNCONFIRMED，保留partial，不把kill请求当收尾成功。源码故障分支有替身回归，正常共享库dump无需为此反复执行。

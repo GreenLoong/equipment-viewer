@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("qt_sqlite_demo"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.8.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.9.0"));
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Qt + SQLite 本地记录示例"));
     parser.addHelpOption();

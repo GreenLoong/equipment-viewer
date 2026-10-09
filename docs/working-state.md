@@ -14,7 +14,13 @@
 
 包位于原聊天outputs独立时间戳目录；0.4 manifest对应aef7499、dirty=false，已清Qt环境原生smoke及独审通过。证据见docs/releases/0.4.md和review handoff。真实用户仅验收环境/记录与F01-1，后续不伪造用户验收。
 
-## 当前进行0.8（本节优先于后方保留历史）
+## 当前进行0.9（本节优先于后方保留历史）
+
+0.8已发布：main/feature最新远端91a83324e7723952e152667cb063fe4765b6a5e7，v0.8.0 peeled63806e0dd7fd50d6645b1aa4bb7c34dfe6731d8b，push与随后ls-remote均退出0。包outputs/equipment-viewer-0.8.0-20261009-055807(.zip)，EXE527A4793…43670，ZIP80202111bytes；全部源码/包独审通过，官方440库存、473 manifest/474 runtime集合、ZIP511条目逐hash一致。默认main README已0.8，历史保留，无force或部署工作流。
+
+现在源码版本0.9.0，磁盘EXE尚0.8，正常API仍0.7/session23654。新增资源测试FF78已独审并实际270真HTTP/5批关闭资源通过，heap+517648逐批增长仅观察；root把npm test:resources加入入口，version/meta/现有恢复与有限资源证据将形成0.9检查点。Qt/worker/SQL业务没有新变化，不扩大为生产稳定/零泄漏保证。0.9元数据/原生包核对后推送，再1.0整合。独立reviewer及模拟用户用followup恢复，已停角色不默认存活。
+
+## 0.8前次集成记录（历史，最新发布状态以上段为准）
 
 最新门槛：新canonical runtime .runtime/cad-distribution/cad-runtime已prepare，旧pip目录未动。完整scripts/build最终16CTest23.75秒通过（build/build-0.8-final.log），模拟用户42EA测试默认新runtime两平台CAD+临时SQLite onlinebackup/restore/新Repository网格指纹全部接受，完整新实屏图在build/cad-user-native-default，原裁切图不作证据。正常API运行仍0.7，源码磁盘0.8未发布。
 
