@@ -14,7 +14,15 @@
 
 包位于原聊天outputs独立时间戳目录；0.4 manifest对应aef7499、dirty=false，已清Qt环境原生smoke及独审通过。证据见docs/releases/0.4.md和review handoff。真实用户仅验收环境/记录与F01-1，后续不伪造用户验收。
 
-## 当前进行0.9（本节优先于后方保留历史）
+## 当前进行1.0（本节优先于后方保留历史）
+
+0.9已发布：main/feature最后远端5b9d4aea480578ce6e412bff615421fe39bfe837，v0.9.0 peeledfa82fd99656173d014562c16dcff175de165f613；atomic push与ls-remote确认退出0。包outputs/equipment-viewer-0.9.0-20261009-104701(.zip)，clean/noDB，EXE85339235AB0673EC9FEB3FA8D03EEAFD3477CC126235DD85D2DE29A584F84741；全部runtime与0.8相同、ZIP511条逐hash等目录，新主EXE清QtPATH原生smoke过及独立meta通过。Qt业务源未变；npm资源入口实际1/1/270请求过，heap+520568仍逐升不能称无增长。
+
+现在1.0只统一版本/文档/正式交付，磁盘源CMake/main/Node/package/lock与新EXE均1.0.0。完整阶段0.3..0.9逐版实现验证/独审已完成；仅final source/包meta、模拟用户最终包试用与远端1.0待完成。真实用户没有再次验收。职责：root集成/Git/服务/公共文档，review_v1只读final source/meta，simulated_user_v1一次最终包试用；已停Agent须followup唤醒。没有新增业务、没有删正常资料或扩大部署费用。
+
+1.0最新运行核对：主Qt EXE已重新编译通过（ninja主目标，无业务改变不重复未变化全suite）。仅向自己已确认旧API managed session23654发CtrlC，确认8765停止后新前台session77296/PID69664启动1.0.0；health/mysql up，鉴权status cache enabled/ready/inFlight0，miss1/set0为只读未知UUID404探针，无正常资料插入。MySQL3310/PID70128与Redis桥6380/PID64612保持，原MySQL80/WSL未操作。Source final review和包仍待完成，旧服务观察段为历史。
+
+## 0.9前次集成记录（历史，最新发布状态以上段为准）
 
 0.8已发布：main/feature最新远端91a83324e7723952e152667cb063fe4765b6a5e7，v0.8.0 peeled63806e0dd7fd50d6645b1aa4bb7c34dfe6731d8b，push与随后ls-remote均退出0。包outputs/equipment-viewer-0.8.0-20261009-055807(.zip)，EXE527A4793…43670，ZIP80202111bytes；全部源码/包独审通过，官方440库存、473 manifest/474 runtime集合、ZIP511条目逐hash一致。默认main README已0.8，历史保留，无force或部署工作流。
 

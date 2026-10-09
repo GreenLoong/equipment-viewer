@@ -539,3 +539,13 @@ SDK包含嵌入式Python/私有modules/worker/bootstrap/30许可+Python LICENSE/
 已亲自查看outputs/0.9-package-startup.png：原生中文窗口/基础三件模型/JSON-STEP入口正常；主管清Qt PATH原生主EXE smoke实际0，本角色只读图和记录，不冒充运行。0.9npm资源入口新日志npm-resources-0.9.log实际1/1退出0、270请求、6.685秒/heap+520568仍递增；与旧6.640及前次18.342分别记录。指南/release已将待提供命令/0.8待发布状态校准，并不确定解释资源波动，不声称长时平台或zero leak。
 
 最终结论：0.9已审有限稳定性源码、入口与此包独立核对通过，无本版发布阻断，可按持续授权tag/push。实际真人验收范围未扩大；1.0整合与最终meta仍独立核对，不能用本结论提前记1.0完成。
+
+## 1.0最终整合源码独审通过（待包）
+
+实际读取git diff v0.9.0、全1.0汇总release与README/guide/AGENTS/working-state。CMake/main/server/package/lock顶与root包均1.0.0，仅版本字符串变化，锁其余节点/依赖/业务/测试未改。新增1.0文档把0.3..0.9已实现和发布的检查点汇总，没有跳过阶段用改编号替代实现；Qt/SQL/worker/HTTP语义沿用各版已审代码。
+
+交付scope准确：CAD完整closed实体/真实曲面与位置/外包络非制造标注/本地持久化，开放几何整体拒绝、CAD团队发布明确不支持；共享Bearer与显示作者名不是独立账户体系，无公开部署或新增费用。环境/记录/F01-1真实验收与后续Agent模拟/技术独审清楚分开。GC堆递增、资源有限/原因未定位、无ASan/跨机/复杂大模型/生产长压均保留限制；原一次selfdelete等待失败保留不声称定位原因。正常共享库未恢复，Git与资料快照分开。
+
+包使用说明data/viewer.sqlite与实际package launch命令核对一致，源码data/records.sqlite不同用途已在README明确。1.0已编译/正常API受控重启及只读health/status/404由主管执行，未将磁盘版本等同服务状态、没有本角色重复真实服务或正常库操作。final文档仍标包/远端待完成，不提前声称1.0发布。
+
+结论：当前1.0小diff/文档来源与scope独立审查通过，无源码阻断，可以生成最终包并提交实际meta供独核。未变化的旧fullsuite不无依据重跑；最终runtime库存、EXE/ZIP、原生启动及最终包模拟试用/远端检查点仍要对应新包记录，不用此前包结论套新artifact。

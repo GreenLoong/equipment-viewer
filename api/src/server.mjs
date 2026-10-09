@@ -9,7 +9,7 @@ import { EquipmentRepository } from './repository.mjs';
 import { validateAnnotationCreate, validateAnnotationUpdate, validateAnnotationQuery, validateUuid } from './annotations.mjs';
 import { createEquipmentCache, normalizeCacheOptions } from './cache.mjs';
 
-export const version = '0.9.0';
+export const version = '1.0.0';
 const hash = (value) => createHash('sha256').update(value).digest();
 
 /** 读取忽略的本机配置；失败只给出安全提示，不输出秘密或文件内容。 */
