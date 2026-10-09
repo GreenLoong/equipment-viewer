@@ -425,3 +425,99 @@ R07-01已关闭。结合本角色实际源码审查、窗口offscreen亲自回�
 目录EXE、build EXE、ZIP内EXE独立SHA256均80DD310C45247D04127A564FF003CE3B52BDBA110C49D93CD9EA70D05BD40086。ZIP32条目，未发现数据库/秘密配置/key/pem/env或未来CAD worker/runtime。已独立查看outputs/0.7包启动验证.png：正常中文、三件基础模型和视角回正文案；该启动抓图不作为完整GL叠加标尺的像素证明，原生FBO标尺/采样及隔离已由R07专项证据验证。主管报告清Qt PATH/plugins原生smoke退出0，本角色不冒充再次运行。
 
 结合已关闭R07-01与已接受R07源码范围，0.7包独立核对通过，无本版发布阻断，可按持续授权tag/push。主树最终14CTest16.50秒/原生专项由主管运行，不套未实施0.8；真实用户再次体验验收仍未声称发生。
+
+### 0.7新版文档包meta复核（001651）
+
+主管README更新后重新打包outputs/equipment-viewer-0.7.0-20261009-001651(.zip)。本角色实际核对manifest source3e3bb57fc05a464e4e5b85f46842065ec5a313d4/version0.7/dirty=true/noDB，目录及ZIP内EXE同80DD310C45247D04127A564FF003CE3B52BDBA110C49D93CD9EA70D05BD40086，与此前已核build/旧0.7包一致；32条目无DB/秘密/CAD worker。8f2a..3e3差异仅README与review handoff，README现明确0.7及0.8开发状态，不涉及业务行为。无需重复smoke冒充新业务验证，原相同EXE清Qt原生smoke和R07证据继续有效。新版0.7包meta复核通过，可tag/push；dirty来自未来worker如实记录。
+
+## R08 worker独审进行中：R08-W01混合开放几何静默丢失
+
+已完整读冻结tools/cad/convert_step.py E6B6A692DB74260EB8112C3425E5CAB6E851125344702B7421282F35562BBCB3及test E0AD0E5E8C4C24CFF1A780976C4388EB0AEAC58268031609E9325DE8D899D517/requirements与cad-converter交接；按入口使用hostPython3.12 -I、explicit private modules/samples亲自运行正式10/10测试，退出0，20.653秒，build/reviewer-cad-worker-0.8.log。没有下载依赖或执行样例来源库脚本，没有替代后续Python3.14嵌入式包/WindowsJob约束测试。
+
+R08-W01已真实实证：read_solids仅提取每leaf/compound内SOLID，略过非实体几何，有任何solid则全局成功。OCCT受控生成compound包含closed box2×2×2及X100处开放plane face，写STEP后真CLI exit0/published=true/parts1，只剩box，开放面静默丢失。冻结规范开放曲面拒绝和失败保留约定下，混合输入不应成功部分导入。旧正式test只单独开放面，无solid时失败，未覆盖混合。
+
+临时证据C:/Users/23871/AppData/Local/Temp/reviewer-r08-worker/mixed.py/mixed.log与mixed-a1b97cb910184413b0284e63e94167ba/raw STEP和result.json保留。建议最小检查所有leaf/compound有无未被closedsolid拥有的几何；拒绝不支持的开放面/壳/线，允许合法多个closedsolids，不能把solid自身面/边误判。已即时通知主管及backend，未改worker业务。此项待修复复验，worker尚不结论通过；C++数据独审结论保持独立。
+
+### R08-W01进一步影响：旧NEMA probe不能证明整文件完整支持
+
+backend在严格Topo覆盖处理中实际发现NEMA原文除6个located SOLID外另有4个Closed=false开放SHELL，每壳250faces，且solid-owned map覆盖0/250；此分类执行主体为backend，本角色未重复原文件分类。该发现支持旧worker6part结果曾丢弃非实体几何，而非仅测试夹具特殊情况。不得为保持旧10tests或interop结果而盲放严格检查。
+
+C++数据层与Scene独审通过仍仅说明既有有效DTO能精确保存/重启/绘制；此前6实体probe来源于真实STEP，但不能由这份probe声称原NEMA所有几何被完整支持。当前worker R08-W01继续阻断。按原冻结“开放曲面拒绝”，正式0.8公开电机/装配样例需换受支持纯closed实体文件，再生成新probe和更新实际预期/许可/sourceHash；若决定支持shell，则须另明确冻结其语义/平面维度/校验和验证范围，不以隐式丢弃或bbox替代实现。
+
+已同步主管；backend修复未冻结期间不对其未完成代码给通过，不与CAD UI抢原生焦点。新嵌入式3.14.8+cp314 OCP安装/导入由主管执行，host3.12当前10tests不是嵌入式包验收。
+
+## R08 CAD UI/Windows进程初轮独审：R08-U01树退出确认顺序
+
+范围主树UI提交63d15a4da6001c6bc0eae920907b84ec08f9f28a及其真实主构建16CTest。已读CadImportProcess全部源/header、Window/Controller/Collab diff和完整process tests、cad-ui交接，不用旧worker部分NEMA历史套新完整转换。
+
+初读正确：Job在CreateProcess JOB_LIST出生附加，2GiB JOB_MEMORY/KILL_ON_CLOSE，启动核IsProcessInJob；只显式绝对运行文件/modules/-I，输出/输入/合计日志有界；QProcess语句排队完成callback采用context+generation，自毁/重启后无后续state访问。Window额外cadBusy覆盖process NotRunning到业务queued提交间隙；cancel可使queued callback失效并恢复控件，析构先删转换对象/清callback，CAD发布在构造基础API文档前拒绝。Controller成功保存后读取失败提示已保存而不是伪回滚。
+
+R08-U01（待修）：finish只看主QProcess NotRunning/exit0就读取结果；complete busy=false、关闭Job、删QTemporaryDir，没有确认Job中全部子孙退出。因此剩余helper可以仍写/持有结果文件，消费/清目录/允许新start早于全树确认。KILL_ON_CLOSE最终发终止请求不是本代码中的明确ActiveProcesses=0证据；现有孙进程测试只有cancel后外部WaitForSingleObject，不覆盖主成功0留活孙。
+
+已亲自独立编译当前CadImportProcess Qt临时探针C:/Users/23871/AppData/Local/Temp/reviewer-r08-ui/tree.cpp/exe/log，无共享构建。受控主Python启动自己的孙进程，孙CreateFileW share=0写完2字节结果并记录PID后持文件sleep；主确认写完/PID后exit0。当前类返回done=1/busy=0/bytes=0，错误“结果缺失、为空或超过64MiB”，实际上文件非空且存在，读取时仍被活孙排他持有。此为确认顺序实证，没有宣称本次永久孤儿；library随后的Job关闭会终止该孙，没有外部PID或正常服务操作。
+
+建议：保留ownJob handle，终态先处理/终止残留后有界核QueryInformationJobObject ActiveProcesses==0，再消费结果/解除busy/清临时目录；查询/终止/确认失败保留job/temp/busy可重试，不用WaitForSingleObject(job)简单代替默认job信号语义。加入主exit0+孙持结果或目录回归，并断言callback前owned子孙句柄已signaled。已通知主管等待最小修，不改业务。
+
+参考已查Microsoft主源Job Objects文档：https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects；相关资源语义只用于上述Code Review，不宣称本机已复现任意IO永不退出。
+
+### R08-W01关闭与worker源码最终独立结论
+
+已完整复查worker88735E2CB496E28FAAB48E347A393B12C7546104240B8139A847978754064FB6/testC39ACB301B568E921EED5A5D1776DB72505842054508433152F82EBDC8679A8E实际新函数和全部新增测试。COMPOUND/COMPSOLID累计TopLoc递归分别收集SOLID与extras，保持原全局位置/名称；所有located Solid有效性检查后建TopExp.MapShapes全拓扑map，extra必须确实属于solid拓扑+location，shell/wire wrapper逐子项检查，不按bbox猜。空shape记unsupported，不再静默丢失；无实体仍NO_SOLIDS。原XCAF循环/镜像绕序/单位/资源/前后hash/partial发布约束保持，CLI/协议未变。
+
+审查者亲自使用主嵌入式Python3.14.8/私有cp314 OCP7.9.3.1执行正式14tests，显式--modules/--samples/--assembly真实Yellow文件，14/14通过27.484秒，build/reviewer-cad-worker-fixed-3.14.log。正式测试包括原NEMA负例、真正mixed face/line整体拒绝无partial、已有结果不覆盖+失败后合法重试、纯多个closedsolid成功、owned重复拓扑不误拒、真实轴承孔/曲面/单位/名称/源SHA/全局placement与独立STEP读取。缺省受控box夹具没有冒充公共电机；本次明确用了公开Yellow。
+
+本角色另用原独立失败fixture mixed-a1b97...的同一原STEP再次真实CLI：现在exit1/UNSUPPORTED_GEOMETRY/outputExists=false，build/reviewer-cad-worker-mixed-fixed.log，原旧成功半模型证据保留。R08-W01关闭。backend另亲自host3.12与embed3.14各14tests通过，执行主体分别记录；主Qt过程+临时SQLite实际新Yellow6/4162v4332t由主管执行，原NEMA不打包。
+
+结论：当前worker源码独立审查通过，无其未关闭阻断项。仅支持完整closedsolid拓扑，开放/游离几何整体拒绝，不再把旧NEMA部分6solid结果作为完整模型；新Yellow来源许可与包路径由主管/运行库负责人维护。准确120秒/2GiB/进程树退出归Qt WindowsJob，R08-U01修复另复核；跨机器和最终桌面包不由本CLI结论代替。依赖requirements09DC78713B5A49B275CE2E33EA23BFDE3A5567D1EA9B618E18CD3F12BC88EC11保持固定novtk/proxy7.9.3.1。
+
+### R08-U01关闭与CAD Qt流程源码独立结论（dd149bc/诊断8ca9a11）
+
+已独立完整复查a3bf781主树cherry dd149bcf5d39158c31f7c902015254d5ff98d849：finish和complete在读result/解除busy/释放目录前核自己Job BasicAccounting ActiveProcesses==0，残留子孙主动终止并用有界预算确认；转换即使主exit0有残留也作为失败，不取半结果。Query/Terminate失败或等待超时保留busy/job/temp并拒新start，可重试cancel。只有TotalProcesses=1的短暂主计数更新等待归零，不把所有主退出瞬间误判子孙。确认全树后显式remove临时目录成功才放行，失败按同一退出预算保留，RAII不假报清理成功。
+
+受控Config钩子只能让本对象真实查询/终止失败，不能伪造active0，析构清钩子真实收尾。无外部PID/Job handle授权路径。STOP的waitForFinished同步finished在stopping时返回，由stop使用剩余总预算确认，不双重业务回调。complete仍通过QObject上下文/代际零延迟投递，callback可自毁或重启，之后无成员访问；取消queued成功不会导入。Window独立cadBusy避免processDone到业务提交间隙新导入；析构在成员有效时先删转换器，关闭未确认则ignore；Controller保存提交后load故障明确已保存，失败前状态不替换。CAD发布明确拒绝而非basic假模型。
+
+审查者亲自用原独立Qt tree.cpp重新直接编译新业务源，tree-fixed.log现在给“主进程退出后仍有子进程，转换已取消”，done1/busy0/bytes0，确认策略已从读锁冲突假缺失转为先终止全树+拒半结果。原probe失败日志保留，未改共享构建/服务。
+
+又亲自执行主build/bin/cad_import_process_tests.exe -platform offscreen，清EQUIPMENT_CAD_*环境参数使用当时默认build/bin内嵌入式运行库，退出0，Job ActiveProcesses0/child-after-exit/query-failure/terminate-failure/retry/destroy及atomic/window全部accepted1。日志build/reviewer-cad-ui-fixed-default.log；EXED4773EB56A67906E3778F08D63145AB02B48C794EE250C19EC01C264FDE50F4E；业务cpp2BEB37833A64AA2B82CEF69D5B1AF1D823CF3F0763A24BF0D1587CEA8B409579/header43677876508E3648232DCC956C2EFDE8E6358605744B09444F8342FBF24787F7；诊断testF4006F80C5C00824DAFA779A49EF104928B74086EB5068BE50EF21750A5BB2C9。
+
+旧主全CTest在selfdelete line175曾单次失败，原build/ctest-cad-integrated-final.log保留；诊断8ca9a11仅加强notified/error/busy输出，无业务修复。作者/主管及本角色后续相同业务复验均未重现，不能把它表述为已找到或修复原因；本结论关闭的是已识别R08-U01树确认缺陷并接受当前生命周期源码/有效回归。release整体仍需主管必要最终检查，不用此段删除历史失败。
+
+当前UI/Job/Controller/Window/Collab已审源码独立通过，无其未关闭已识别业务阻断项。主新Yellow实际process+临时SQL重启由主管验收，worker88735本角色已单独通过；模拟用户新公开608/Yellow双平台与5资源cycles由其执行待本角色进一步证据核对。POSIX/系统API持续真实失败/复杂400k性能/最终runtime许可与复制/干净包不由本源码结论替代。主管后续临时移走build/bin runtime作新可复现安装准备属于生成物变化，不把暂缺依赖错误当旧UI产品失败。
+
+## R08-R01缓存信任缺陷关闭及runtime脚本独审结果
+
+已读冻结setup6F892...与sync66D94479BBBEF46FDD08CDD983B9D5AD59EF266944464AE146C05CA696D34D1D完整源码及build/package插入点。初稿verify跳过任何__pycache__/*.pyc，probe另设空cachePrefix但正常worker禁写不禁读。审查者在完全独立私有canonical副本仅增加unchecked-hash OCP init缓存，固定zip/wheel所有payload不变，inventory+verify通过而实际load_kernel执行未核cache，cause为REVIEWER_UNVERIFIED_CACHE_EXECUTED。原源runtime未改；C:/Users/23871/AppData/Local/Temp/reviewer-r08-runtime/cache.py/log/copy保留。
+
+主管最小修后setup SHA0ABD3A067E1250B7014984C7ACBF090544E24707398C897686413FD013EB9BA6只放行固定payload，不再给cache例外；sync/worker未变。本角色用同一原cache-67e646...完整fixture复验verify明确unknown-pyc拒绝，所有475文件SHA/数量（含固定payload和恶意cache）前后完全相同，未删除或覆盖；clean新canonical又验证通过。cache-fixed.log保留。R08-R01关闭；当前复制/验证只信任固定归档库存，不把禁写当成禁读保障。
+
+其他已读保护：固定3.14.8 embed/7.9.3.1 cp314 novtk+proxy URL/SHA，缓存与下载stream预算，ZIP路径/重复/软链接与512MiB展开限制；ordinary拒路径及所有祖先reparse；先逐文件匹配payload再probe，以空cache/tmp及最小env运行 -I -B，版本确为3.14.8/7.9.3.1。新stage独立UUID、完整许可/源码/manifest核对及probe后发布；已有不同/未知目标拒绝并保留，已核已有目标只加缺失同内容文件，不Force覆盖/不删除原runtime。唯一本脚本递归删除为自己本次新建stage，删除前重新核ordinary/parent/prefix；失败stage保留。
+
+PowerShell wrapper保UTF8 BOM、source/parent/child及叶名cad-runtime guard，PSF签名+全部官方embed根文件hash后才启动自带Python，bootstrap再校全部wheel；明确BootstrapPython需绝对文件，不从PATH找解释器。build调用新canonical同步到bin/cad-runtime，package仅version>=0.8同步到freshbundle/cad-runtime，旧7包不包含未来runtime。旧legacy与旧bin由主管先备份，未覆盖正常资料。
+
+许可/NOTICE为技术交付清单：30固定官方来源及SHA+原Python LICENSE，包含OCP/OCCT与附带DLL/相关Header及MSdocx；NOTICE给源码/构建配方链接和已读取PE版本边界，明确未证明的DLL/工具链对应，不把文本清单称法律合规保证。最终包仍需实际文件/完整manifest哈希与不依赖系统Python验证，不以source verify代替包。
+
+结论：当前setup0ABD/sync66D9及已读build/package接入源码独审通过，无其已识别源码阻断项，可继续fresh/default wrapper与最终包核对。作者/主管实际offline prepare/freshsync/repeat/unknown拒绝及全16CTest由其记录，本角色实际独证为完整payload cache攻击及修正拒绝/保留与clean验证。源码通过不冒充所有执行由本角色完成。
+
+## 提前0.9 Node有限资源检查独立审查
+
+已全文读取新增api/test/resource.test.mjs（FF78D39EB0B8116BA3DB33D3CCFB761B3D916897051BE3AD52C83A5D95D8F5FB）、backend-stability交接与实际日志node-resource-final.log（D68A217C60B20EB69E26080030C5EA3C87696E27E454A7A9C4624351D0EC0844）。日志对应server5810761...0800CA/cache79DF/repo238564，已亲自核当前文件一致。作者执行Node24.18 --expose-gc实际1/1通过6.640秒；本角色按主管要求不重复未变化业务的真实DB/服务检查。
+
+有效边界：真实createApp/start随机loopback port、内置http keepalive Agent，请求解析/鉴权/operation timeout/cancel/close使用实际实现；仅Repository为受控边界，pending只因实际AbortSignal取消，不用替身timer或close代取消。每周期18请求，401不进入仓储；500不露内部细节；503实际timeout；真实客户端断Socket在250ms时限前传取消；失败后正常读回；close先abort全部pending再store.close且只调用一次。server/client close事件set、server.getConnections、pending及Agent三池均实际归零，无正常MySQL/Redis/端口操作。
+
+两周期暖机、5批各3周期/54请求共270测量请求。公开getActiveResourcesInfo与process.report.libuv形状未知先失败，不把API缺失当0；不使用私有_getActiveHandles，不把loop记录计为handle，Windows全部OS句柄明确null。每批TCP资源/活动libuv句柄回暖机基线。监听归零是网络server.listening，不扩大为所有JS listener全局计数保证。
+
+独立核对实际五批GC后heapUsed：16513136→16707408→16793144→16942208→16994328→17030784字节，累计+517648。该小样本堆值是逐批上升，不能写为无持续增长或堆已平稳；测试只记录，不用任意字节阈值判zero leak，也没有由此证明泄漏原因。RSS/external及活动句柄分别记录，socket/task正确归零不等于全内存无泄漏。是否长时平台稳定可在后续有需要时另测，不靠本5批外推。
+
+结论：新测试与作者证据独立审查通过，可用于0.9有限受控HTTP资源/取消收尾检查；如实保留堆增加与非真实DB/Redis/有限时长范围。当前不由这一测试提前宣称0.9全部发布或1.0稳定性保证。
+
+## 0.8候选桌面包最终独立核对通过（055807）
+
+独立核对outputs/equipment-viewer-0.8.0-20261009-055807(.zip)：manifest version0.8.0/source63806e0dd7fd50d6645b1aa4bb7c34dfe6731d8b/dirty=true/databaseIncluded=false。核对时HEAD63806e0，仅review/sim/release文档与未来Node资源test/handoff变化，不把dirty误记clean。目录EXE、build EXE及ZIP streamed EXE三处SHA均527A4793F0433DA431E4A72A8F921E0E70C1C3ACBBE6A3AE35171DF3B2043670；包内worker88735/setup0ABD与已审源相同。
+
+本角色独立Python读实际固定zip/wheels、核缓存制品SHA、重算440个官方payload库存并用当前verifier核候选runtime；473个runtime-manifest文件均hash匹配，实际runtime474个文件（含manifest）集合完整无额外cache。逐流核ZIP的全部510文件（511条目含目录）与目录每个SHA相同，无缺失/多余；30固定许可正文逐文件SHA与冻结清单一致。build/reviewer-package-0.8-deep.log和reviewer-package-0.8-allzip.log均accepted1。不是只信任自写manifest或用主管自查代独审。
+
+SDK包含嵌入式Python/私有modules/worker/bootstrap/30许可+Python LICENSE/NOTICE与来源/manifest。两公开STEP及其说明/许可在目录与ZIP一致，source raw文件Git对象等于63806e0已提交对象；NEMA不打包。递归目录与ZIP扫描未发现DB/sqlite/key/pem/local配置/env/partial或未核pyc。没有普通data/服务凭证进入交付。
+
+已独立读build/cad-package-native.log全部验收结果和查看01真孔/02六件装配/10新SQLite重开三图：完整1320x820客户区，真实环孔/Yellow曲面、六件位置与毫米包络/来源明确，原生实际FBO samples4；CAD_SQLITE_RECOVERY onlinebackup/freshRepo精确mesh/source fingerprint及全部CAD_USER acceptance1。执行主体为主管使用包内Python/modules/worker与模型+当前同源Qt业务harness，不冒充bundle主EXE完成导入。bundle主EXE另由主管清Qt PATH只System32原生smoke退出0，已独立看0.8-package-startup.png正常启动。裸--version的GUI弹窗probe未当作控制台验证通过。
+
+结论：0.8已审源码与本候选包独立核对通过，无本版未关闭发布阻断，可依持续授权tag/push。W/U/R及数据三项均已闭，旧175单次测试失败和旧NEMA部分历史均保留且限制准确，后续正式默认/包内必要复验由对应角色记录。复杂极大CAD/跨机器/ASan及真人再次验收没有虚称完成。0.9仅已有资源检查、入口与版本文档/包变更按范围复核，不扩本阶段业务；最终1.0另核meta。
