@@ -529,3 +529,13 @@ SDK包含嵌入式Python/私有modules/worker/bootstrap/30许可+Python LICENSE/
 独立读主管新入口实际build/node-resource-0.9-entry.log，1/1退出0、270请求，heap16512152→17029832/+517680仍递增。执行主体主管，未把旧6.640秒与当前18.342秒相混、不重复旧全suite/真实DB/正常服务。文档区分模拟/主管/独审、正常ev_shared未恢复、正常记录仅已授权backup后迁移保留、临时CAD/ev_test恢复以及有限资源观察；未写跨机/复杂模型/零泄漏已验证。
 
 源码结论：0.9当前有限资源检查入口、已验证范围整合与版本metadata独立通过，无源码阻断。新Qt EXE构建和0.9包尚待主管meta，不预记交付通过。已向主管提示最终release文档更新旧“0.8发布后/将提供npm命令”的待办语气，并把驱动/Qt缓存造成波动改为可能解释/原因未独立定位；此是证据用语准确性，不新增业务或重复测试要求。
+
+## 0.9桌面包独立核对通过（104701）
+
+本角色实际核候选outputs/equipment-viewer-0.9.0-20261009-104701(.zip) manifest：0.9.0/sourcefa82fd99656173d014562c16dcff175de165f613/dirty=false/databaseIncluded=false，核对开始HEAD同fa82且工作区clean。目录EXE/build EXE独立SHA85339235AB0673EC9FEB3FA8D03EEAFD3477CC126235DD85D2DE29A584F84741，ZIP逐文件核对应EXE一致。相对发布0.8的src/tools/cad/scripts差异仅main版本字符串，未改变已审业务。
+
+独立逐流核全部ZIP510文件（511条目含目录）与目录SHA和集合一致；runtime474文件含manifest逐SHA与已完整审过0.8 runtime完全相同，473个manifest哈希亦全部匹配，因此worker88735/setup0ABD/固定SDK440库存/30许可+Python LICENSE/NOTICE/源码沿用同一已审字节。扫描无DB/sqlite/secret key/pem/local配置/env/pyc/partial。日志build/reviewer-package-0.9.log accepted1，未重复14/16/完整CAD。
+
+已亲自查看outputs/0.9-package-startup.png：原生中文窗口/基础三件模型/JSON-STEP入口正常；主管清Qt PATH原生主EXE smoke实际0，本角色只读图和记录，不冒充运行。0.9npm资源入口新日志npm-resources-0.9.log实际1/1退出0、270请求、6.685秒/heap+520568仍递增；与旧6.640及前次18.342分别记录。指南/release已将待提供命令/0.8待发布状态校准，并不确定解释资源波动，不声称长时平台或zero leak。
+
+最终结论：0.9已审有限稳定性源码、入口与此包独立核对通过，无本版发布阻断，可按持续授权tag/push。实际真人验收范围未扩大；1.0整合与最终meta仍独立核对，不能用本结论提前记1.0完成。
