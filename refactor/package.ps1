@@ -50,6 +50,12 @@ Copy-Item -LiteralPath $executable -Destination (Join-Path $target $applicationN
 Get-ChildItem -LiteralPath $bin -File -Filter '*.dll' | Where-Object { $_.Name -ne 'Qt6Test.dll' } | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $target $_.Name) -Force
 }
+# 清掉早期交付版本可能残留的测试专用运行库：目标目录是本脚本产物，刷新后应只含运行所需文件。
+$staleTestLibrary = Join-Path $target 'Qt6Test.dll'
+if (Test-Path -LiteralPath $staleTestLibrary -PathType Leaf) {
+    Remove-Item -LiteralPath $staleTestLibrary -Force
+    Write-Output "REMOVED: $staleTestLibrary（仅测试程序使用）"
+}
 foreach ($plugin in @('platforms', 'sqldrivers', 'styles', 'imageformats', 'iconengines', 'generic', 'networkinformation', 'tls')) {
     $source = Join-Path $bin $plugin
     if (Test-Path -LiteralPath $source -PathType Container) {
