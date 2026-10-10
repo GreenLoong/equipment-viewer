@@ -1,5 +1,16 @@
 # 当前工作状态与中断恢复入口
 
+## 去重重构件 refactor/（2026-10-11，独立副本，未改原源码）
+
+用户要求“重新审查代码、去掉重复实现，并把重构后的代码放到新文件夹，不能修改源代码”。已完成：
+
+- 产出 `refactor/`：`src/`（去重后的实现，文件名与公开接口不变）、`tests/`（原 `tests/*.cpp` 21 个逐字节副本，仅供本目录独立构建）、`tools/`（构建用探针副本 + 克隆检测与副本校验脚本）、`CMakeLists.txt`、`build.ps1`、`README.md`、`docs/dedup-report.md`、`docs/harness-sha256.txt`。
+- 新增共用内部头：`numericutil.h`、`partvalidation.h`、`jsonutil.h`、`sqliteconnection.h`（不扩业务功能）。共消除 18 类重复实现，含 `sceneview.cpp` 内相机朝向、NDC→像素、GL 分栏绘制/顶点填充、可见包围盒、手势复位等 7 组 ≥80 词重复，以及仓库/场景的形状校验、JSON 严格校验、SQLite 连接生命周期、导入提交流程与看门狗定时器。
+- 实际验证：`cmake --build build-refactor --clean-first`（Qt6.11.1 + GCC13.1.0 + Ninja，`-Wall -Wextra -Wpedantic`）23 目标零警告；`ctest --test-dir build-refactor` **18/18 通过 31.09 秒**；`r11_desktop_tester -platform windows` 原生通过（`accepted=1`、实测 `samples=4`、超采样 `1.5x`、退出码 0，截图在 `build-refactor/r11-native`）；`refactor/tools/verify-harness-copy.ps1` 确认测试副本 `checked=22 mismatches=0`；`git status --short` 只显示新增 `refactor/`，`git diff --stat -- src tests CMakeLists.txt scripts tools samples` 为空。
+- 重复度证据：`tools/find_clones.py` 报告 ≥60 词重复组 60 → 50（残留为 `equipmentwindow` 声明列表、`validNote` 重复取值等形态相似片段，非重复实现）；`sceneview.cpp` ≥80 词重复 7 组 → 0 组。
+- 未做：测试侧 241 组窗口/临时库样板重复未改（测试是验收证据，需单独功能卡与独立复验，见 `refactor/docs/dedup-report.md` 第 4 节）；未合并回主树、未打包、未推送、未真人验收；`refactor/` 仍是工作区未提交状态（提交与否按用户意愿）。
+- 注意：本轮为读取 `git status` 曾临时加入全局 `safe.directory`，已用 `git config --global --unset` 撤销，后续查询统一使用 `git -c safe.directory=...`。
+
 ## 1.1.1 已交付（2026-10-10，当前状态）
 
 用户实机反馈四条显示/交互问题（右键不能拖动视角、右下角坐标轴与网页版不一致、锯齿明显、放大后背景出现放射状平行线）已在原生Qt路径修复并交付：源码提交 e49bba97e7c8eaa79395bb9575565f1c585c69e6（打包时工作区干净），标签 v1.1.1，main 同步。修复内容与证据见 docs/releases/1.1.1.md；要点：左键旋转/右键平移/中键与滚轮缩放、坐标轴改成网页版画法（圆点+字母+世界XYZ并按深度排序）、三维绘制进自建多重采样FBO再1.5倍超采样并如实报告实测采样、参考网格改为受限地面网格（自适应1/2/5毫米档、≤58条、贴模型底部、正视右视不画）。同时修掉坐标轴画刷未恢复导致三视图整栏被实体色填充的状态泄漏。

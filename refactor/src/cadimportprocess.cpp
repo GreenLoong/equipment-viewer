@@ -1,0 +1,555 @@
+#include "cadimportprocess.h"
+
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QProcess>
+#include <QPointer>
+#include <QTemporaryDir>
+#include <QTimer>
+#include <QElapsedTimer>
+#include <QThread>
+#include <QStringList>
+#include <algorithm>
+#include <vector>
+#include <cstddef>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <tlhelp32.h>
+#endif
+
+namespace {
+constexpr qint64 maximumInput = 100 * 1024 * 1024;
+constexpr qint64 maximumOutput = 64 * 1024 * 1024;
+constexpr qint64 maximumLogs = 128 * 1024;
+#ifdef Q_OS_WIN
+// Job在CreateProcess时附加，worker没有先运行再被限制的窗口。
+struct WindowsJob {
+    HANDLE handle = nullptr;
+    STARTUPINFOEXW startup{};
+    std::vector<unsigned char> attributes;
+    bool initialized = false;
+    ~WindowsJob() {
+        if (initialized) DeleteProcThreadAttributeList(startup.lpAttributeList);
+        if (handle) CloseHandle(handle);
+    }
+    bool prepare() {
+        handle = CreateJobObjectW(nullptr, nullptr);
+        if (!handle) return false;
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            | JOB_OBJECT_LIMIT_JOB_MEMORY;
+        limits.JobMemoryLimit = SIZE_T(2ULL * 1024 * 1024 * 1024);
+        if (!SetInformationJobObject(handle, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+            return false;
+        SIZE_T bytes = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &bytes);
+        if (!bytes) return false;
+        attributes.resize(bytes);
+        startup.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributes.data());
+        if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0, &bytes)) return false;
+        initialized = true;
+        return UpdateProcThreadAttribute(startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST,
+                                        &handle, sizeof(handle), nullptr, nullptr);
+    }
+};
+
+bool liveOwnedChild(HANDLE job, qint64 mainPid, const std::function<void()> &beforeRecheck, bool &liveChild, QString &diagnostic)
+{
+    liveChild = false;
+    constexpr DWORD maximumMembers = 4096;
+    DWORD capacity = 16;
+    for (int attempt = 0; attempt < 9; ++attempt) {
+        const size_t bytes = offsetof(JOBOBJECT_BASIC_PROCESS_ID_LIST, ProcessIdList) + capacity * sizeof(ULONG_PTR);
+        std::vector<ULONG_PTR> storage((bytes + sizeof(ULONG_PTR) - 1) / sizeof(ULONG_PTR));
+        auto *members = reinterpret_cast<JOBOBJECT_BASIC_PROCESS_ID_LIST *>(storage.data());
+        const BOOL queried = QueryInformationJobObject(job, JobObjectBasicProcessIdList, members, DWORD(bytes), nullptr);
+        const DWORD error = queried ? ERROR_SUCCESS : GetLastError();
+        if ((!queried && error == ERROR_MORE_DATA) || (queried && members->NumberOfProcessIdsInList != members->NumberOfAssignedProcesses)) {
+            if (capacity == maximumMembers || members->NumberOfAssignedProcesses > maximumMembers) {
+                diagnostic = QStringLiteral("成员列表超过完整查询预算"); return false;
+            }
+            capacity = std::min(maximumMembers, std::max(capacity * 2, members->NumberOfAssignedProcesses));
+            continue;
+        }
+        if (!queried || members->NumberOfProcessIdsInList > capacity) {
+            diagnostic = QStringLiteral("成员列表查询失败 win32=%1").arg(error); return false;
+        }
+        QStringList observations;
+        for (DWORD index = 0; index < members->NumberOfProcessIdsInList; ++index) {
+            const DWORD pid = DWORD(members->ProcessIdList[index]);
+            HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if (!process) {
+                const DWORD openError = GetLastError();
+                if (openError == ERROR_INVALID_PARAMETER) { observations << QStringLiteral("%1:gone").arg(pid); continue; }
+                diagnostic = QStringLiteral("成员%1无法核实 win32=%2").arg(pid).arg(openError); return false;
+            }
+            BOOL attached = FALSE;
+            const BOOL verified = IsProcessInJob(process, job, &attached);
+            const DWORD verifyError = verified ? ERROR_SUCCESS : GetLastError();
+            const DWORD waited = verified && attached ? WaitForSingleObject(process, 0) : WAIT_OBJECT_0;
+            DWORD waitError = waited == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
+            QString image;
+            if (verified && attached && waited == WAIT_TIMEOUT && qint64(pid) != mainPid) {
+                std::vector<wchar_t> path(32768);
+                DWORD length = DWORD(path.size());
+                if (QueryFullProcessImageNameW(process, 0, path.data(), &length))
+                    image = QString::fromWCharArray(path.data(), int(length));
+                else {
+                    const DWORD imageError = GetLastError();
+                    image = QStringLiteral("<image-unavailable win32=%1>").arg(imageError);
+                    // 仅诊断已核本Job成员：快照只提取此PID的exe名称/父PID，不输出其它进程。
+                    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+                    if (snapshot == INVALID_HANDLE_VALUE) image += QStringLiteral(" snapshotError=%1").arg(GetLastError());
+                    else {
+                        PROCESSENTRY32W entry{}; entry.dwSize = sizeof(entry);
+                        BOOL available = Process32FirstW(snapshot, &entry); bool matched = false;
+                        while (available) {
+                            if (entry.th32ProcessID == pid) {
+                                image += QStringLiteral(" snapshotExe={%1} parentPid=%2")
+                                    .arg(QString::fromWCharArray(entry.szExeFile)).arg(entry.th32ParentProcessID);
+                                matched = true; break;
+                            }
+                            available = Process32NextW(snapshot, &entry);
+                        }
+                        if (!matched) image += QStringLiteral(" snapshotMatch=none");
+                        CloseHandle(snapshot);
+                    }
+                }
+            }
+            DWORD rechecked = waited;
+            if (verified && attached && waited == WAIT_TIMEOUT) {
+                if (qint64(pid) != mainPid && beforeRecheck) beforeRecheck();
+                // 映像/快照查询期间成员可能已退出；不能拿前一次TIMEOUT当成现在仍活。
+                rechecked = WaitForSingleObject(process, 0);
+                if (rechecked == WAIT_FAILED) waitError = GetLastError();
+            }
+            CloseHandle(process); // 不持有退出对象引用阻碍下一次Job记账查询。
+            if (!verified || rechecked == WAIT_FAILED) {
+                diagnostic = QStringLiteral("成员%1归属/退出状态无法核实 win32=%2").arg(pid).arg(verifyError ? verifyError : waitError); return false;
+            }
+            if (!attached) { observations << QStringLiteral("%1:foreignOrReleased").arg(pid); continue; }
+            if (rechecked == WAIT_OBJECT_0) {
+                observations << QStringLiteral("%1:%2").arg(pid).arg(waited == WAIT_TIMEOUT ? QStringLiteral("exitedAfterProbe") : QStringLiteral("exited"));
+                if (!image.isEmpty()) observations.last() += QStringLiteral(" image={%1}").arg(image);
+                continue;
+            }
+            if (rechecked != WAIT_TIMEOUT) { diagnostic = QStringLiteral("成员%1退出查询返回未知状态%2").arg(pid).arg(rechecked); return false; }
+            const bool child = qint64(pid) != mainPid;
+            observations << QStringLiteral("%1:%2").arg(pid).arg(child ? QStringLiteral("liveChild") : QStringLiteral("liveMain"));
+            if (child) observations.last() += QStringLiteral(" image={%1}").arg(image);
+            liveChild = liveChild || child;
+        }
+        diagnostic = QStringLiteral("assigned=%1 returned=%2 members=[%3]")
+            .arg(members->NumberOfAssignedProcesses).arg(members->NumberOfProcessIdsInList).arg(observations.join(QLatin1Char(',')));
+        return true;
+    }
+    diagnostic = QStringLiteral("成员列表持续变化，无法取得完整快照"); return false;
+}
+#endif
+}
+
+struct CadImportProcess::State {
+    Config config;
+    QProcess process;
+    QTimer deadline;
+    QTimer outputWatch;
+    std::unique_ptr<QTemporaryDir> directory;
+    Completion completion;
+    QString output;
+    QString error;
+    QString stopError;
+    QString jobDiagnostic;
+    qint64 mainPid = 0;
+    int exitCode = 0;
+    bool normalExit = false;
+    bool exitObserved = false;
+    bool memberExitRaceObserved = false;
+    quint32 creationFlags = 0;
+    qint64 logs = 0;
+    quint64 generation = 0;
+    bool busy = false;
+    bool stopping = false;
+    bool confined = false;
+    bool treeConfirmed = false;
+    QElapsedTimer exitBudget;
+#ifdef Q_OS_WIN
+    std::unique_ptr<WindowsJob> job;
+#endif
+
+    /** 停止截止与输出看门狗；完成、取消与保留未确认三条路径共用。 */
+    void haltWatchdogs()
+    {
+        deadline.stop();
+        outputWatch.stop();
+    }
+
+    /** 启动退出预算计时；同一总预算只启动一次，后续路径复用剩余时间。 */
+    void ensureExitBudget()
+    {
+        if (!exitBudget.isValid())
+            exitBudget.start();
+    }
+};
+
+CadImportProcess::Config CadImportProcess::Config::runtime()
+{
+    const QDir root(QCoreApplication::applicationDirPath() + QStringLiteral("/cad-runtime"));
+    Config config;
+    config.python = qEnvironmentVariable("EQUIPMENT_CAD_PYTHON", root.filePath(QStringLiteral("python.exe")));
+    config.modules = qEnvironmentVariable("EQUIPMENT_CAD_MODULES", root.filePath(QStringLiteral("site-packages")));
+    config.converter = qEnvironmentVariable("EQUIPMENT_CAD_CONVERTER", root.filePath(QStringLiteral("convert_step.py")));
+    return config;
+}
+
+CadImportProcess::CadImportProcess(QObject *parent) : CadImportProcess(Config::runtime(), parent) {}
+
+CadImportProcess::CadImportProcess(const Config &config, QObject *parent)
+    : QObject(parent), state_(std::make_unique<State>())
+{
+    state_->config = config;
+    state_->config.timeoutMs = std::clamp(config.timeoutMs, 50, 120000);
+    state_->config.exitConfirmationMs = std::clamp(config.exitConfirmationMs, 50, 3000);
+    state_->deadline.setSingleShot(true);
+    state_->outputWatch.setInterval(100);
+    connect(&state_->deadline, &QTimer::timeout, this, [this] {
+        stop(QStringLiteral("CAD转换超过等待期限，已取消；原设备保留。"));
+    });
+    connect(&state_->outputWatch, &QTimer::timeout, this, [this] {
+        if (QFileInfo(state_->output).size() > maximumOutput)
+            stop(QStringLiteral("CAD结果超过64 MiB，已取消；原设备保留。"));
+    });
+}
+
+CadImportProcess::~CadImportProcess()
+{
+    // QObject基类析构晚于派生成员；先清回调，避免取消信号访问已销毁窗口。
+    state_->completion = {};
+    // 故障注入只影响受控调用，析构仍使用真实拥有的Job做最后清理。
+    state_->config.allowJobQuery = {};
+    state_->config.allowJobTermination = {};
+    state_->config.beforeJobMemberRecheck = {};
+    cancel();
+    if (state_->busy && state_->directory)
+        state_->directory->setAutoRemove(false);
+}
+
+bool CadImportProcess::isBusy() const { return state_->busy; }
+qint64 CadImportProcess::processId() const { return state_->process.processId(); }
+bool CadImportProcess::isConfined() const { return state_->confined; }
+QString CadImportProcess::lastError() const { return state_->error; }
+QString CadImportProcess::jobExitDiagnostic() const
+{
+    return state_->jobDiagnostic + (state_->memberExitRaceObserved ? QStringLiteral(" observed=exitedAfterProbe") : QString())
+        + QStringLiteral(" creationFlags=0x%1").arg(state_->creationFlags, 0, 16) + (state_->exitObserved
+        ? QStringLiteral(" exitCode=%1 normalExit=%2").arg(state_->exitCode).arg(state_->normalExit)
+        : QStringLiteral(" exitCode=<unobserved>"));
+}
+
+bool CadImportProcess::start(const QString &input, Completion completion)
+{
+    auto &s = *state_;
+    if (s.busy) { s.error = QStringLiteral("CAD转换正在进行，请等待或取消后再导入。"); return false; }
+    s.error.clear();
+    const QFileInfo source(input);
+    const QString suffix = source.suffix().toLower();
+    if ((suffix != QStringLiteral("step") && suffix != QStringLiteral("stp"))
+        || !source.isFile() || !source.isReadable() || source.size() <= 0 || source.size() > maximumInput) {
+        s.error = QStringLiteral("请选择非空且不超过100 MiB的STEP/STP文件。"); return false;
+    }
+    const Config &config = s.config;
+    for (const QString &path : {config.python, config.modules, config.converter}) {
+        if (!QFileInfo(path).isAbsolute()) {
+            s.error = QStringLiteral("CAD运行路径必须为显式受信绝对路径。"); return false;
+        }
+    }
+    if (!QFileInfo(config.python).isFile() || !QFileInfo(config.converter).isFile()
+        || !QFileInfo(config.modules).isDir()) {
+        s.error = QStringLiteral("CAD运行库不完整，请检查cad-runtime或显式CAD运行路径。"); return false;
+    }
+    s.directory = std::make_unique<QTemporaryDir>(QDir::tempPath() + QStringLiteral("/equipment-cad-XXXXXX"));
+    if (!s.directory->isValid()) {
+        s.error = QStringLiteral("无法创建CAD临时结果目录。"); s.directory.reset(); return false;
+    }
+#ifdef Q_OS_WIN
+    s.job = std::make_unique<WindowsJob>();
+    if (!s.job->prepare()) {
+        s.error = QStringLiteral("无法建立CAD进程资源约束，未启动转换。");
+        s.job.reset(); s.directory.reset(); return false;
+    }
+    s.process.setCreateProcessArgumentsModifier([this](QProcess::CreateProcessArguments *args) {
+        auto &job = *state_->job;
+        job.startup.StartupInfo = *reinterpret_cast<STARTUPINFOW *>(args->startupInfo);
+        job.startup.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+        args->startupInfo = reinterpret_cast<Q_STARTUPINFO *>(&job.startup);
+        // GUI后台转换不需要控制台窗口/宿主；保留既有stdio管道与出生即附加的Job。
+        args->flags |= EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW;
+        state_->creationFlags = quint32(args->flags);
+    });
+#endif
+    s.output = s.directory->filePath(QStringLiteral("result.json"));
+    s.logs = 0; s.stopError.clear(); s.jobDiagnostic.clear(); s.mainPid = 0; s.stopping = false; s.confined = false;
+    s.exitCode = 0; s.normalExit = false; s.exitObserved = false;
+    s.memberExitRaceObserved = false;
+    s.creationFlags = 0;
+    s.treeConfirmed = false;
+    s.exitBudget.invalidate();
+    s.completion = std::move(completion);
+    s.busy = true;
+    const quint64 operation = ++s.generation;
+    // 每次操作重连且检查代际，不让取消/前次退出信号提交下一次输出。
+    s.process.disconnect(this);
+    connect(&s.process, &QProcess::readyReadStandardOutput, this, [this, operation] {
+        if (operation == state_->generation) drain();
+    });
+    connect(&s.process, &QProcess::readyReadStandardError, this, [this, operation] {
+        if (operation == state_->generation) drain();
+    });
+    connect(&s.process, &QProcess::started, this, [this, operation] {
+        if (operation != state_->generation) return;
+        state_->mainPid = processId();
+#ifdef Q_OS_WIN
+        // 只打开QProcess本次创建且仍活动的PID；JOB_LIST已从创建时附加。
+        HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(processId()));
+        BOOL attached = FALSE;
+        const bool verified = process && IsProcessInJob(process, state_->job->handle, &attached) && attached;
+        if (process) CloseHandle(process);
+        if (!verified) { stop(QStringLiteral("CAD进程Job约束验证失败，已取消。")); return; }
+        state_->confined = true;
+#endif
+    });
+    connect(&s.process, &QProcess::errorOccurred, this, [this, operation](QProcess::ProcessError error) {
+        if (operation != state_->generation) return;
+        if (error == QProcess::FailedToStart)
+            complete({}, QStringLiteral("无法启动受信CAD转换器：%1").arg(state_->process.errorString()));
+    });
+    connect(&s.process, &QProcess::finished, this, [this, operation](int code, QProcess::ExitStatus status) {
+        if (operation != state_->generation) return;
+        state_->exitCode = code; state_->normalExit = status == QProcess::NormalExit; state_->exitObserved = true;
+        state_->haltWatchdogs();
+        state_->ensureExitBudget();
+        // 返回QProcess finished栈，让其退出句柄/引用清理完成，再查本Job；预算不重新开始。
+        QTimer::singleShot(0, this, [this, operation, code, status] {
+            if (operation == state_->generation) finish(code, status == QProcess::NormalExit);
+        });
+    });
+    s.process.setWorkingDirectory(s.directory->path());
+    s.process.setProcessChannelMode(QProcess::SeparateChannels);
+    const QPointer<CadImportProcess> owner(this);
+    s.process.start(config.python, {QStringLiteral("-I"), config.converter,
+        QStringLiteral("--input"), source.absoluteFilePath(), QStringLiteral("--output"), s.output,
+        QStringLiteral("--modules"), config.modules});
+    if (!owner) return true; // 启动失败回调允许调用者销毁拥有者。
+    if (s.busy && s.generation == operation) {
+        s.deadline.start(s.config.timeoutMs);
+        s.outputWatch.start();
+    }
+    return true;
+}
+
+void CadImportProcess::drain()
+{
+    auto &s = *state_;
+    // 逐块实际消费两个管道；只记累计字节数，不保存或输出模型/内核日志。
+    for (auto channel : {QProcess::StandardOutput, QProcess::StandardError}) {
+        s.process.setReadChannel(channel);
+        while (s.process.bytesAvailable() > 0) {
+            const QByteArray bytes = s.process.read(4096);
+            if (bytes.isEmpty()) break;
+            s.logs += bytes.size();
+            if (s.logs > maximumLogs && !s.stopping) {
+                stop(QStringLiteral("CAD转换日志超过128 KiB，已取消。"));
+                return;
+            }
+        }
+    }
+}
+
+void CadImportProcess::stop(const QString &error)
+{
+    auto &s = *state_;
+    if (!s.busy) return;
+    const quint64 operation = s.generation;
+    s.stopping = true; s.stopError = error; s.error = error;
+    s.haltWatchdogs();
+    s.ensureExitBudget();
+    if (!terminateJob()) return;
+    if (s.process.state() != QProcess::NotRunning) {
+        const QPointer<CadImportProcess> owner(this);
+        s.process.kill();
+        s.process.waitForFinished(std::max(0, s.config.exitConfirmationMs - int(s.exitBudget.elapsed())));
+        if (!owner) return;
+    }
+    if (s.generation != operation) return;
+    if (s.process.state() == QProcess::NotRunning && s.busy
+        && confirmTreeEmpty(std::max(0, s.config.exitConfirmationMs - int(s.exitBudget.elapsed()))))
+        complete({}, error);
+    else if (s.busy && s.process.state() != QProcess::NotRunning)
+        retainUnconfirmed(error + QStringLiteral(" 主进程退出尚未确认。"));
+}
+
+void CadImportProcess::retainUnconfirmed(const QString &error)
+{
+    auto &s = *state_;
+    s.stopping = true;
+    s.haltWatchdogs();
+    s.error = error + QStringLiteral(" 转换进程树退出尚未确认，临时输出已保留；禁止再次导入。请重试取消。");
+}
+
+bool CadImportProcess::terminateJob()
+{
+#ifdef Q_OS_WIN
+    auto &s = *state_;
+    if (s.job && ((s.config.allowJobTermination && !s.config.allowJobTermination())
+        || !TerminateJobObject(s.job->handle, 1))) {
+        retainUnconfirmed(QStringLiteral("无法终止本次CAD转换进程树。"));
+        return false;
+    }
+#endif
+    return true;
+}
+
+bool CadImportProcess::confirmTreeEmpty(int budgetMs)
+{
+    auto &s = *state_;
+    if (s.process.state() != QProcess::NotRunning) return false;
+#ifdef Q_OS_WIN
+    if (s.job) {
+        QElapsedTimer budget; budget.start();
+        // 正常主退出后允许所有owned成员在原总预算内自然清空；不是按名字放行系统宿主。
+        // 最多250ms且不超过剩余预算一半，留另一半终止仍活成员并确认Active=0。
+        const int naturalExitWindowMs = s.stopping ? 0 : std::min(250, std::max(0, budgetMs) / 2);
+        bool terminationRequested = false;
+        for (;;) {
+            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
+            if ((s.config.allowJobQuery && !s.config.allowJobQuery())
+                || !QueryInformationJobObject(s.job->handle, JobObjectBasicAccountingInformation,
+                                              &accounting, sizeof(accounting), nullptr)) {
+                retainUnconfirmed(QStringLiteral("无法查询本次CAD转换进程树的活动进程数。"));
+                return false;
+            }
+            // 主QProcess退出不能证明孙进程退出；唯有本Job的ActiveProcesses为零才能读结果/释放目录。
+            if (accounting.ActiveProcesses == 0) {
+                if (s.jobDiagnostic.isEmpty()) s.jobDiagnostic = QStringLiteral("main=%1 total=%2 active=0").arg(s.mainPid).arg(accounting.TotalProcesses);
+                else s.jobDiagnostic += QStringLiteral(" confirmedActive=0");
+                s.treeConfirmed = true; return true;
+            }
+            if (!terminationRequested) {
+                bool liveChild = false; QString members;
+                const bool verified = liveOwnedChild(s.job->handle, s.mainPid, s.config.beforeJobMemberRecheck, liveChild, members);
+                s.jobDiagnostic = QStringLiteral("main=%1 total=%2 active=%3 %4")
+                    .arg(s.mainPid).arg(accounting.TotalProcesses).arg(accounting.ActiveProcesses).arg(members);
+                s.memberExitRaceObserved = s.memberExitRaceObserved || members.contains(QStringLiteral("exitedAfterProbe"));
+                if (!verified) { retainUnconfirmed(QStringLiteral("无法完整核实本次CAD进程树成员。")); return false; }
+                // TotalProcesses包含历史已退出成员；只有完整快照中仍活的本Job子进程才判残留。
+                // 已退出但计数未结算仍必须等ActiveProcesses=0，绝不提前读取或接受结果。
+                if (liveChild) {
+                    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION current{};
+                    if ((s.config.allowJobQuery && !s.config.allowJobQuery())
+                        || !QueryInformationJobObject(s.job->handle, JobObjectBasicAccountingInformation,
+                                                      &current, sizeof(current), nullptr)) {
+                        retainUnconfirmed(QStringLiteral("无法复核本次CAD转换进程树的活动进程数。")); return false;
+                    }
+                    s.jobDiagnostic += QStringLiteral(" activeRecheck=%1").arg(current.ActiveProcesses);
+                    if (current.ActiveProcesses == 0) { s.jobDiagnostic += QStringLiteral(" confirmedActive=0"); s.treeConfirmed = true; return true; }
+                    s.jobDiagnostic += QStringLiteral(" naturalElapsedMs=%1 naturalWindowMs=%2").arg(budget.elapsed()).arg(naturalExitWindowMs);
+                    if (budget.elapsed() >= naturalExitWindowMs) {
+                        s.stopping = true;
+                        if (s.stopError.isEmpty()) s.stopError = QStringLiteral("CAD主进程退出后仍有子进程，转换已取消；原设备保留。");
+                        if (!terminateJob()) return false;
+                        terminationRequested = true;
+                    }
+                }
+            }
+            if (budget.elapsed() >= budgetMs) {
+                retainUnconfirmed(QStringLiteral("等待本次CAD转换进程树清空超时。"));
+                return false;
+            }
+            Sleep(DWORD(std::min(5, std::max(1, budgetMs - int(budget.elapsed())))));
+        }
+    }
+#else
+    Q_UNUSED(budgetMs)
+#endif
+    s.treeConfirmed = true;
+    return true;
+}
+
+bool CadImportProcess::cancel()
+{
+    if (!state_->busy) {
+        // 转换结束与业务提交之间的排队回调也可被取消。
+        ++state_->generation;
+        return true;
+    }
+    const QPointer<CadImportProcess> owner(this);
+    stop(QStringLiteral("CAD导入已取消；原设备和资料保留。"));
+    return !owner || !state_->busy;
+}
+
+void CadImportProcess::finish(int exitCode, bool normalExit)
+{
+    auto &s = *state_;
+    if (!s.busy) return;
+    const quint64 operation = s.generation;
+    const QPointer<CadImportProcess> owner(this);
+    drain();
+    if (!owner) return;
+    if (!s.busy || s.generation != operation) return;
+    // stop的waitForFinished会同步触发finished，退出确认由stop统一使用同一总预算。
+    if (s.stopping) return;
+    s.haltWatchdogs();
+    s.ensureExitBudget();
+    if (!confirmTreeEmpty(std::max(0, s.config.exitConfirmationMs - int(s.exitBudget.elapsed())))) return;
+    if (s.stopping) { complete({}, s.stopError); return; }
+    if (!normalExit || exitCode != 0) {
+        complete({}, QStringLiteral("CAD转换失败（退出码%1）；原设备和资料保留。").arg(exitCode)); return;
+    }
+    QFile file(s.output);
+    if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 || file.size() > maximumOutput) {
+        file.close();
+        complete({}, QStringLiteral("CAD转换结果缺失、为空或超过64 MiB；原设备保留。")); return;
+    }
+    QByteArray bytes = file.read(maximumOutput + 1);
+    if (file.error() != QFileDevice::NoError || bytes.size() > maximumOutput) {
+        file.close();
+        complete({}, QStringLiteral("CAD转换结果读取失败或超限；原设备保留。")); return;
+    }
+    file.close();
+    complete(std::move(bytes), {});
+}
+
+void CadImportProcess::complete(QByteArray bytes, const QString &error)
+{
+    auto &s = *state_;
+    if (!s.busy || s.process.state() != QProcess::NotRunning) return;
+    s.ensureExitBudget();
+    if (!s.treeConfirmed && !confirmTreeEmpty(s.config.exitConfirmationMs)) return;
+    // 即使Job活动数已归零，Windows句柄释放/安全软件扫描仍可能短暂阻止删除；不能假报已释放。
+    while (s.directory && !s.directory->remove()) {
+        if (s.exitBudget.elapsed() >= s.config.exitConfirmationMs) {
+            s.haltWatchdogs(); s.stopping = true;
+            s.error = QStringLiteral("CAD进程树已清空，但临时结果目录无法释放；资料保留，请重试取消。");
+            return;
+        }
+        QThread::msleep(5);
+    }
+    s.haltWatchdogs();
+    s.busy = false; s.confined = false; s.error = error;
+    ++s.generation;
+    s.process.disconnect(this);
+#ifdef Q_OS_WIN
+    s.process.setCreateProcessArgumentsModifier({});
+    s.job.reset();
+#endif
+    s.directory.reset();
+    auto completion = std::move(s.completion);
+    const quint64 operation = s.generation;
+    // 脱离QProcess信号栈后通知调用者，允许回调销毁拥有者或开始下一次操作。
+    QTimer::singleShot(0, this, [this, operation, completion = std::move(completion),
+                               bytes = std::move(bytes), error]() mutable {
+        if (state_->generation == operation && completion)
+            completion(std::move(bytes), error);
+    });
+}
