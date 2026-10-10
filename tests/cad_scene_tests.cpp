@@ -165,6 +165,9 @@ int main(int argc, char **argv)
     QString picked;
     scene.onPartPicked = [&](const QString &id) { picked = id; };
     scene.setParts(bearing);
+    scene.setDimensionsVisible(true);
+    scene.setGridVisible(false);
+    scene.setAxisPlacement(SceneView::AxisPlacement::Hidden);
     REQUIRE(!scene.rendererDescription().contains(QStringLiteral("场景错误")));
     // 从Z方向观察真实轴承贯通孔；中心背景+空拾取不能由包围盒替代。
     drag(app, canvas, QPointF(0, 120));
@@ -187,6 +190,7 @@ int main(int argc, char **argv)
     REQUIRE(!annulus.isNull());
     QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, (QPointF(annulus) / ring.devicePixelRatio()).toPoint());
     REQUIRE(picked == bearing.first().id);
+    const auto beforeHighlight = capture(scene, canvas);
     scene.setSelectedPart(picked);
     app.processEvents();
     const auto measurements = scene.measurementAnnotations();
@@ -196,17 +200,22 @@ int main(int argc, char **argv)
     REQUIRE(measurements[3].millimeters == *bearing.first().sizeZ);
     ring = capture(scene, canvas);
     REQUIRE(ring.pixelColor(center) == QColor(31, 40, 52));
-    REQUIRE(orange(ring.pixelColor(annulus)));
+    REQUIRE(ring != beforeHighlight); // 高亮描边，底色和孔保持原样。
     REQUIRE(nearColor(ring, (measurements[0].start + measurements[0].end) / 2, QColor(215, 225, 235)));
     REQUIRE(ring.save(destination.filePath(QStringLiteral("cad-bearing-hole-selected.png"))));
     scene.setHiddenParts({bearing.first().id});
     REQUIRE(scene.measurementAnnotations().isEmpty());
     QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, (QPointF(annulus) / ring.devicePixelRatio()).toPoint());
+    REQUIRE(picked == bearing.first().id);
+    QTest::mouseDClick(canvas, Qt::LeftButton, Qt::NoModifier, (QPointF(annulus) / ring.devicePixelRatio()).toPoint());
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, (QPointF(annulus) / ring.devicePixelRatio()).toPoint());
     REQUIRE(picked.isEmpty());
     scene.setHiddenParts({});
     REQUIRE(scene.measurementAnnotations().size() == 4);
 
     scene.setParts(motor);
+    // 本专项按统一蓝色提取真实网格像素；默认每件不同配色由assembly_scene专项覆盖。
+    for (const auto &part : motor) REQUIRE(scene.setPartColor(part.id, QColor(89, 157, 205)));
     app.processEvents();
     REQUIRE(!scene.rendererDescription().contains(QStringLiteral("场景错误")));
     REQUIRE(capture(scene, canvas).save(destination.filePath(QStringLiteral("cad-motor-assembly.png"))));
@@ -252,6 +261,9 @@ int main(int argc, char **argv)
         hidden.insert(part.id);
         scene.setHiddenParts(hidden);
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, (QPointF(surfacePoint) / dpr).toPoint());
+        REQUIRE(picked == part.id);
+        QTest::mouseDClick(canvas, Qt::LeftButton, Qt::NoModifier, (QPointF(surfacePoint) / dpr).toPoint());
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, (QPointF(surfacePoint) / dpr).toPoint());
         REQUIRE(picked.isEmpty());
         REQUIRE(scene.measurementAnnotations().isEmpty());
         QTextStream(stdout) << part.id << " assembly placement verified; pixel bounds=" << observed.x() << "," << observed.y()

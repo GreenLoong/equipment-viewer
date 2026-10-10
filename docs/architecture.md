@@ -73,3 +73,9 @@ Window.importFile按扩展名分流 → CadImportProcess启动显式私有Python
 tools/cad/convert_step.py检查整份拓扑，拒绝独立开放几何，累计装配变换并转换毫米。meshgeometry.cpp校验局部顶点、三角索引与真实引用包络；EVM1二进制保存不可变网格。Repository先读长度和头部核累计预算，再读取BLOB，避免很多合法大网格使进程无界占用。已知旧SQLite结构事务迁移并核对行数、外键和完整性；未知结构报错保留。
 
 Scene以position+localVertex画真实三角面，并复用毫米标尺、拾取与显隐。共享std::shared_ptr<const MeshGeometry>不借用可失效Part。CAD本地发布明确拒绝，旧HTTP基础几何契约继续有效。私有运行库准备见tools/cad/setup_runtime.py；构建/交付复制由scripts/sync-cad-runtime.ps1执行，第三方许可随包保存。
+
+## 1.1显示状态与持久资料边界
+
+SceneView的视图、轴位置、颜色、展开和单件拉远只影响内存绘制；displayOffset为毫米副本，原始Part/网格不回写Repository。Controller仍是选中/隐藏/隔离来源，取消选中不清隔离；Window把有效ID、显隐和查看操作传给Scene，并分别展示原位置与显示偏移。设备成功切换清展示状态，失败保旧设备与显示，网络批注保既有API契约。
+
+两条原生绘制路径共用归一化/相机/拾取约定。软件回退检查与原生OpenGL FBO验证分列，多视图拾取按对应子视口转换，而不是沿用整画布NDC。资源按原Qt/GL上下文生命周期释放。当前实现与验证门槛见releases/1.1.md。

@@ -8,6 +8,8 @@
 #include "sceneview.h"
 
 #include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QClipboard>
 #include <QColor>
 #include <QCryptographicHash>
@@ -32,6 +34,8 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QSet>
+#include <QSlider>
+#include <QHash>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTextStream>
@@ -114,14 +118,29 @@ bool capture(QWidget &window, const QString &name)
         REQUIRE(available.width() > 400 && available.height() > 300);
         window.resize(std::min(1320, available.width() - 40), std::min(820, available.height() - 60));
         window.move(available.topLeft() + QPoint(16, 16));
-        window.raise(); window.activateWindow(); QTest::qWait(180);
-        const QRect frame = window.frameGeometry();
+        window.raise(); window.activateWindow();
+        QRect frame, client, previousFrame, previousClient;
+        QSize actualSize, minimumSize, previousSize, previousMinimum;
+        QElapsedTimer unchanged; unchanged.start();
+        // native resize/layout/paint可能排队；只等待真实几何收敛，不改minimum或放松屏幕包含检查。
+        const bool settled = waitUntil([&] {
+            frame = window.frameGeometry(); client = QRect(window.mapToGlobal(QPoint()), window.size());
+            actualSize = window.size(); minimumSize = window.minimumSize();
+            if (frame != previousFrame || client != previousClient || actualSize != previousSize || minimumSize != previousMinimum) {
+                previousFrame = frame; previousClient = client; previousSize = actualSize; previousMinimum = minimumSize;
+                unchanged.restart();
+            }
+            return available.contains(frame) && available.contains(client) && unchanged.elapsed() >= 150;
+        }, 3000);
         QTextStream(stdout) << "CAD_CAPTURE available=" << available.x() << ',' << available.y() << ',' << available.width() << ',' << available.height()
             << " frame=" << frame.x() << ',' << frame.y() << ',' << frame.width() << ',' << frame.height()
+            << " client=" << client.x() << ',' << client.y() << ',' << client.width() << ',' << client.height()
+            << " size=" << actualSize.width() << ',' << actualSize.height()
+            << " minimumSize=" << minimumSize.width() << ',' << minimumSize.height() << " settled=" << settled
             << " dpr=" << screen->devicePixelRatio() << Qt::endl;
         REQUIRE(available.contains(frame)); // 不能通过改产品minimum/layout掩盖无法完整显示的窗口。
-        const QRect client(window.mapToGlobal(QPoint()), window.size());
         REQUIRE(available.contains(client));
+        REQUIRE(settled);
         const QPoint screenPoint = client.topLeft() - screen->geometry().topLeft();
         // 取实际桌面上本窗口客户区，避免Windows高DPI的winId抓图裁切/黑白填充。
         const auto pixels = screen->grabWindow(0, screenPoint.x(), screenPoint.y(), client.width(), client.height());
@@ -129,6 +148,7 @@ bool capture(QWidget &window, const QString &name)
             auto *canvas = scene->findChild<QWidget *>(QStringLiteral("sceneCanvas"));
             REQUIRE(canvas && !pixels.isNull());
             const QImage image = pixels.toImage();
+            const auto mode = scene->viewMode();
             const double ratio = double(image.width()) / window.width();
             const QRect roi(QPointF(canvas->mapTo(&window, QPoint()) * ratio).toPoint(),
                             QSize(int(canvas->width() * ratio), int(canvas->height() * ratio)));
@@ -136,8 +156,11 @@ bool capture(QWidget &window, const QString &name)
             for (int y = roi.top(); y <= roi.bottom(); y += 8) for (int x = roi.left(); x <= roi.right(); x += 8) {
                 if (!image.rect().contains(x, y)) continue;
                 const QColor color = image.pixelColor(x, y); ++samples;
-                if (color.red() >= 20 && color.red() <= 45 && color.green() >= 25 && color.green() <= 55
-                    && color.blue() >= 40 && color.blue() <= 70) ++background;
+                const bool light = color.red() > 235 && color.green() > 235 && color.blue() > 240;
+                const bool dark = color.red() < 24 && color.green() < 30 && color.blue() < 39;
+                const bool colored = color.red() >= 20 && color.red() <= 45 && color.green() >= 25 && color.green() <= 55
+                    && color.blue() >= 40 && color.blue() <= 70;
+                if (mode == SceneView::ViewMode::Engineering ? light : mode == SceneView::ViewMode::Isometric ? colored : dark) ++background;
             }
             pixels.save(QDir(snapshots).filePath(name)); // 失败也留原截图供定位，不合成伪实屏。
             REQUIRE(samples > 0 && background * 10 > samples);
@@ -311,6 +334,10 @@ bool displayedPart(EquipmentWindow &window, SceneView &scene, const Part &part)
         REQUIRE(std::abs(window.findChild<QLabel *>(labels[axis])->text().toDouble() - dimensions[axis]) < 0.001);
     }
     int axes = 0;
+    auto *dimensionsControl = window.findChild<QCheckBox *>(QStringLiteral("dimensionsCheck"));
+    REQUIRE(dimensionsControl);
+    if (!dimensionsControl->isChecked()) { dimensionsControl->setFocus(); QTest::keyClick(dimensionsControl, Qt::Key_Space); }
+    REQUIRE(dimensionsControl->isChecked() && scene.dimensionsVisible());
     for (const auto &measurement : scene.measurementAnnotations()) {
         const int axis = QStringLiteral("XYZ").indexOf(measurement.axis);
         if (measurement.axis.size() == 1 && axis >= 0) {
@@ -340,6 +367,196 @@ bool failedImportPreserves(EquipmentWindow &window, EquipmentController &control
     REQUIRE(controller.availableEquipment(devicesAfter) && devicesBefore.size() == devicesAfter.size());
     for (int index = 0; index < devicesBefore.size(); ++index)
         REQUIRE(devicesBefore[index].id == devicesAfter[index].id && devicesBefore[index].name == devicesAfter[index].name);
+    return true;
+}
+
+bool chooseCombo(QComboBox *combo, int data)
+{
+    REQUIRE(combo && combo->isVisible() && combo->isEnabled());
+    const int index = combo->findData(data);
+    REQUIRE(index >= 0);
+    combo->setFocus(); QTest::keyClick(combo, Qt::Key_Home);
+    for (int step = 0; step < index; ++step) QTest::keyClick(combo, Qt::Key_Down);
+    drain(); QTest::qWait(50);
+    REQUIRE(combo->currentData().toInt() == data);
+    return true;
+}
+
+bool sliderMaximum(QSlider *slider)
+{
+    REQUIRE(slider && slider->isVisible() && slider->isEnabled());
+    slider->setFocus(); QTest::keyClick(slider, Qt::Key_End); drain(); QTest::qWait(60);
+    REQUIRE(slider->value() == 100);
+    return true;
+}
+
+bool assemblyPreviewCheck(const QString &databasePath)
+{
+    EquipmentRepository repository;
+    REQUIRE(repository.openDatabase(databasePath) && repository.initialize());
+    EquipmentController controller(repository);
+    EquipmentWindow window(controller);
+    REQUIRE(window.loadEquipment(QStringLiteral("EQ-001")));
+    if (QApplication::platformName() == QStringLiteral("windows")) window.setWindowFlag(Qt::WindowStaysOnTopHint, true);
+    window.show(); QTest::qWait(160);
+    REQUIRE(importAndWait(window, assemblyPath)); // 实际STEP转换→事务保存→完整读回，绝不塞入预制JSON。
+    const QString sourceSha = sourceHash(assemblyPath);
+    const QString equipmentId = QStringLiteral("CAD-") + sourceSha;
+    if (!controller.equipment() || controller.equipment()->id != equipmentId || controller.parts().size() != expectedAssembly) {
+        auto *cad = worker(window);
+        QTextStream(stderr) << "CAD_ASSEMBLY_IMPORT_DIAGNOSTIC expectedId=" << equipmentId
+            << " currentId=" << (controller.equipment() ? controller.equipment()->id : QStringLiteral("<none>"))
+            << " parts=" << controller.parts().size() << " expectedParts=" << expectedAssembly
+            << " status='" << window.findChild<QLabel *>(QStringLiteral("equipmentStatus"))->text()
+            << "' workerError='" << (cad ? cad->lastError() : QStringLiteral("<none>"))
+            << "' job='" << (cad ? cad->jobExitDiagnostic() : QStringLiteral("<none>")) << "'" << Qt::endl;
+    }
+    REQUIRE(controller.equipment() && controller.equipment()->id == equipmentId && controller.parts().size() == expectedAssembly);
+    const QList<Part> source = controller.parts();
+    const QStringList original = fingerprints(source);
+    REQUIRE(original.size() == expectedAssembly);
+    quint64 vertices = 0, triangles = 0;
+    QString selected;
+    double largestVolume = -1;
+    for (const Part &part : source) {
+        REQUIRE(part.mesh && part.shape == QStringLiteral("mesh") && part.cadSourceSha256 == sourceSha);
+        vertices += part.mesh->vertices.size(); triangles += part.mesh->triangles.size();
+        const double volume = part.sizeX.value_or(0) * part.sizeY.value_or(0) * part.sizeZ.value_or(0);
+        if (volume > largestVolume) { largestVolume = volume; selected = part.id; }
+    }
+    auto *scene = dynamic_cast<SceneView *>(window.findChild<QWidget *>(QStringLiteral("sceneView")));
+    REQUIRE(scene && !selected.isEmpty() && vertices > quint64(expectedAssembly * 20) && triangles > quint64(expectedAssembly * 20));
+    auto *canvas = scene->findChild<QWidget *>(QStringLiteral("sceneCanvas"));
+    REQUIRE(canvas);
+    if (QApplication::platformName() == QStringLiteral("windows")) {
+        auto *native = dynamic_cast<QOpenGLWidget *>(canvas);
+        REQUIRE(native && waitUntil([&] { return native->isValid(); }, 5000));
+    }
+    auto *view = window.findChild<QComboBox *>(QStringLiteral("viewModeSelector"));
+    auto *projection = window.findChild<QComboBox *>(QStringLiteral("projectionSelector"));
+    auto *axes = window.findChild<QComboBox *>(QStringLiteral("axisPlacementSelector"));
+    auto *explodeAxis = window.findChild<QComboBox *>(QStringLiteral("explodeAxisSelector"));
+    auto *dimensions = window.findChild<QCheckBox *>(QStringLiteral("dimensionsCheck"));
+    auto *grid = window.findChild<QCheckBox *>(QStringLiteral("gridCheck"));
+    auto *explosion = window.findChild<QSlider *>(QStringLiteral("explosionSlider"));
+    auto *pull = window.findChild<QSlider *>(QStringLiteral("pullSlider"));
+    auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreDisplayButton"));
+    auto *restorePart = window.findChild<QPushButton *>(QStringLiteral("restorePartButton"));
+    auto *isolate = window.findChild<QPushButton *>(QStringLiteral("isolateSelectedButton"));
+    auto *showAll = window.findChild<QPushButton *>(QStringLiteral("showAllButton"));
+    REQUIRE(view && projection && axes && explodeAxis && dimensions && grid && explosion && pull && restore && restorePart && isolate && showAll);
+    REQUIRE(view->currentData().toInt() == 0 && scene->viewMode() == SceneView::ViewMode::Isometric && !dimensions->isChecked() && !scene->dimensionsVisible());
+    REQUIRE(clickPart(window, selected));
+    QSet<QRgb> colors;
+    for (const Part &part : source) colors.insert(scene->partColor(part.id).rgb());
+    REQUIRE(colors.size() == source.size());
+    REQUIRE(capture(window, QStringLiteral("assembly-01-colored-source.png")));
+    dimensions->setFocus(); QTest::keyClick(dimensions, Qt::Key_Space); drain();
+    REQUIRE(dimensions->isChecked() && scene->dimensionsVisible());
+    int dimensionAxes = 0;
+    for (const auto &annotation : scene->measurementAnnotations()) if (annotation.axis.size() == 1 && QStringLiteral("XYZ").contains(annotation.axis)) ++dimensionAxes;
+    REQUIRE(dimensionAxes == 3);
+    REQUIRE(chooseCombo(axes, int(SceneView::AxisPlacement::Both)) && scene->axisPlacement() == SceneView::AxisPlacement::Both);
+    REQUIRE(chooseCombo(view, 1) && scene->viewMode() == SceneView::ViewMode::Engineering);
+    REQUIRE(capture(window, QStringLiteral("assembly-02-engineering-dimensions.png")));
+    const QImage engineering = scenePixels(*scene); REQUIRE(!engineering.isNull());
+    REQUIRE(chooseCombo(view, 2) && scene->viewMode() == SceneView::ViewMode::Front);
+    REQUIRE(chooseCombo(projection, int(SceneView::ViewMode::Top)) && scene->viewMode() == SceneView::ViewMode::Top);
+    REQUIRE(capture(window, QStringLiteral("assembly-03-projection-top.png")));
+    REQUIRE(scenePixels(*scene) != engineering);
+    REQUIRE(chooseCombo(view, 3) && scene->viewMode() == SceneView::ViewMode::ThreeViews);
+    REQUIRE(capture(window, QStringLiteral("assembly-04-three-views-dimensions.png")));
+    dimensions->setFocus(); QTest::keyClick(dimensions, Qt::Key_Space);
+    grid->setFocus(); QTest::keyClick(grid, Qt::Key_Space); drain(); QTest::qWait(80);
+    REQUIRE(!scene->dimensionsVisible() && !scene->gridVisible());
+    REQUIRE(chooseCombo(axes, int(SceneView::AxisPlacement::Hidden)));
+    const QImage threeViews = scenePixels(*scene);
+    REQUIRE(!threeViews.isNull());
+    // 三个实帧中央区域均需有几何像素；关闭网格/尺寸/XYZ排除仅文字或参考线的假证据。
+    for (int panel = 0; panel < 3; ++panel) {
+        int geometryPixels = 0;
+        for (int y = threeViews.height() / 4; y < threeViews.height() * 4 / 5; y += 2)
+            for (int x = threeViews.width() * panel / 3 + 8; x < threeViews.width() * (panel + 1) / 3 - 8; x += 2) {
+                const QColor pixel = threeViews.pixelColor(x, y);
+                if (pixel.red() > 70 || pixel.green() > 80 || pixel.blue() > 90) ++geometryPixels;
+            }
+        REQUIRE(geometryPixels > 20);
+        QTextStream(stdout) << "CAD_ASSEMBLY_FRAME panel=" << panel << " geometryPixels=" << geometryPixels << Qt::endl;
+    }
+    REQUIRE(capture(window, QStringLiteral("assembly-05-three-views-unobscured.png")));
+    REQUIRE(chooseCombo(view, 0));
+    for (const auto axis : {SceneView::ExplodeAxis::Auto, SceneView::ExplodeAxis::X, SceneView::ExplodeAxis::Y, SceneView::ExplodeAxis::Z}) {
+        QTest::mouseClick(restore, Qt::LeftButton); drain();
+        REQUIRE(chooseCombo(explodeAxis, int(axis)) && sliderMaximum(explosion));
+        REQUIRE(scene->explosionFraction() == 1);
+        const int active = int(scene->resolvedExplodeAxis()) - int(SceneView::ExplodeAxis::X);
+        REQUIRE(active >= 0 && active < 3);
+        long double low = std::numeric_limits<long double>::infinity(), high = -low;
+        for (const Part &part : source) {
+            const std::array<long double, 3> position{part.positionX, part.positionY, part.positionZ};
+            const std::array<long double, 3> size{part.sizeX.value_or(0), part.sizeY.value_or(0), part.sizeZ.value_or(0)};
+            low = std::min(low, position[active] - size[active] / 2);
+            high = std::max(high, position[active] + size[active] / 2);
+        }
+        const long double sourceCenter = (low + high) / 2;
+        QList<QPair<long double, long double>> ordering;
+        int moved = 0;
+        for (const Part &part : source) {
+            const std::array<long double, 3> position{part.positionX, part.positionY, part.positionZ};
+            const auto offset = scene->displayOffset(part.id);
+            for (int other = 0; other < 3; ++other) if (other != active) REQUIRE(std::abs(offset[other]) < .001L);
+            if (position[active] < sourceCenter - .001L) REQUIRE(offset[active] <= .001L);
+            if (position[active] > sourceCenter + .001L) REQUIRE(offset[active] >= -.001L);
+            if (std::abs(offset[active]) > .001L) ++moved;
+            ordering.append(qMakePair(position[active], position[active] + offset[active]));
+        }
+        std::sort(ordering.begin(), ordering.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+        for (int index = 1; index < ordering.size(); ++index)
+            if (ordering[index].first - ordering[index - 1].first > .001L)
+                REQUIRE(ordering[index].second - ordering[index - 1].second >= ordering[index].first - ordering[index - 1].first - .001L);
+        if (axis == SceneView::ExplodeAxis::Auto) REQUIRE(moved > 0);
+        REQUIRE(fingerprints(controller.parts()) == original);
+    }
+    REQUIRE(chooseCombo(explodeAxis, int(SceneView::ExplodeAxis::Auto)));
+    QHash<QString, std::array<long double, 3>> beforePull;
+    for (const Part &part : source) beforePull.insert(part.id, scene->displayOffset(part.id));
+    REQUIRE(sliderMaximum(pull) && scene->pullFraction() == 1);
+    REQUIRE(scene->displayOffset(selected) != beforePull.value(selected));
+    for (const Part &part : source) if (part.id != selected) REQUIRE(scene->displayOffset(part.id) == beforePull.value(part.id));
+    REQUIRE(fingerprints(controller.parts()) == original);
+    REQUIRE(capture(window, QStringLiteral("assembly-06-ordered-expand-single-pull.png")));
+    QTest::mouseClick(restorePart, Qt::LeftButton); drain();
+    REQUIRE(scene->pullFraction() == 0 && scene->displayOffset(selected) == beforePull.value(selected));
+    QTest::mouseClick(restore, Qt::LeftButton); drain();
+    REQUIRE(scene->explosionFraction() == 0 && scene->pullFraction() == 0 && explosion->value() == 0 && pull->value() == 0);
+    for (const Part &part : source) for (const auto offset : scene->displayOffset(part.id)) REQUIRE(offset == 0);
+    REQUIRE(fingerprints(controller.parts()) == original);
+    QTest::mouseClick(isolate, Qt::LeftButton); drain();
+    const QSet<QString> hidden = controller.hiddenPartIds();
+    REQUIRE(controller.isIsolationActive() && hidden.size() == expectedAssembly - 1 && !hidden.contains(selected));
+    REQUIRE(chooseCombo(view, 3));
+    // 实际画布边角无模型；单击不清，双击清选择且保控制器唯一隔离目标。
+    const QPoint blank(4, canvas->height() - 4);
+    QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, blank); drain();
+    REQUIRE(controller.selectedPartId() == selected && controller.hiddenPartIds() == hidden);
+    QTest::mouseDClick(canvas, Qt::LeftButton, Qt::NoModifier, blank);
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, blank); drain();
+    REQUIRE(controller.selectedPartId().isEmpty() && controller.isIsolationActive() && controller.hiddenPartIds() == hidden);
+    REQUIRE(controller.isolatedPartId() == selected);
+    REQUIRE(capture(window, QStringLiteral("assembly-07-blank-clear-keeps-single.png")));
+    REQUIRE(clickPart(window, source.first().id == selected ? source.last().id : source.first().id));
+    REQUIRE(controller.isIsolationActive() && !controller.hiddenPartIds().contains(controller.selectedPartId()));
+    QTest::mouseClick(showAll, Qt::LeftButton); drain();
+    REQUIRE(!controller.isIsolationActive() && controller.hiddenPartIds().isEmpty());
+    QList<Part> persisted;
+    REQUIRE(repository.loadParts(equipmentId, persisted) && fingerprints(persisted) == original);
+    EquipmentRepository restarted;
+    REQUIRE(restarted.openDatabase(databasePath) && restarted.initialize());
+    QList<Part> restartParts;
+    REQUIRE(restarted.loadParts(equipmentId, restartParts) && fingerprints(restartParts) == original);
+    QTextStream(stdout) << "CAD_ASSEMBLY_PREVIEW parts=" << source.size() << " vertices=" << vertices << " triangles=" << triangles
+        << " realStepImport=1 controlsByKeyboardMouse=1 fourViews=1 threePanelsGeometry=1 orderedAxis=1 pullOnlySelected=1 restoreSourceExact=1"
+        << " blankClearKeepsIsolation=1 databaseRestartExact=1 native=" << (QApplication::platformName() == QStringLiteral("windows")) << " agentTrial=1 realUserAcceptance=0" << Qt::endl;
     return true;
 }
 
@@ -416,7 +633,9 @@ bool functional(const QString &badFile, QString &databasePath, QStringList &asse
     QTest::mouseClick(isolate, Qt::LeftButton);
     const auto firstHidden = controller.hiddenPartIds();
     REQUIRE(controller.isIsolationActive() && firstHidden.size() == expectedAssembly - 1 && !firstHidden.contains(biggest));
-    REQUIRE(clickPart(window, smallest) && controller.hiddenPartIds() == firstHidden);
+    // 1.1有效单击直接切隔离，不需第二次双击；原位/网格参数仍受后续指纹校验保护。
+    REQUIRE(clickPart(window, smallest) && controller.hiddenPartIds() != firstHidden
+            && controller.hiddenPartIds().size() == expectedAssembly - 1 && !controller.hiddenPartIds().contains(smallest));
     REQUIRE(clickPart(window, smallest, true));
     REQUIRE(controller.isIsolationActive() && controller.selectedPartId() == smallest
             && controller.hiddenPartIds().size() == expectedAssembly - 1 && !controller.hiddenPartIds().contains(smallest));
@@ -609,6 +828,7 @@ int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
     const auto arguments = app.arguments();
+    const bool assemblyPreview = arguments.contains(QStringLiteral("--assembly-preview-check"));
     auto option = [&](const QString &name) {
         const int index = arguments.indexOf(name);
         return index >= 0 && index + 1 < arguments.size() ? arguments[index + 1] : QString();
@@ -632,7 +852,7 @@ int main(int argc, char **argv)
         if (!value.isEmpty()) qputenv(pair.second.constData(), QFileInfo(value).absoluteFilePath().toUtf8());
     }
     const auto runtime = CadImportProcess::Config::runtime();
-    if (!QFileInfo(bearingPath).isFile() || !QFileInfo(assemblyPath).isFile() || expectedAssembly < 2 || expectedAssembly > 1000
+    if ((!assemblyPreview && !QFileInfo(bearingPath).isFile()) || !QFileInfo(assemblyPath).isFile() || expectedAssembly < 2 || expectedAssembly > 1000
         || resourceCycles < 0 || resourceCycles > 10 || (!rejectedPath.isEmpty() && !QFileInfo(rejectedPath).isFile())
         || !QFileInfo(runtime.python).isAbsolute() || !QFileInfo(runtime.python).isFile()
         || !QFileInfo(runtime.modules).isAbsolute() || !QFileInfo(runtime.modules).isDir()
@@ -651,6 +871,8 @@ int main(int argc, char **argv)
     if (!invalid.open(QIODevice::WriteOnly)) return 1;
     invalid.write("ISO-10303-21;\nINVALID CONTROLLED STEP;\nEND-ISO-10303-21;\n"); invalid.close();
     QString database = data.filePath(QStringLiteral("cad-user.sqlite"));
+    // 1.1有限专项仅导入本轮6/82真实装配并验新控件，不重复旧轴承/取消/长资源循环。
+    if (assemblyPreview) return assemblyPreviewCheck(database) ? 0 : 1;
     QString assemblyId;
     QStringList assemblyFingerprint;
     if (!functional(badFile, database, assemblyFingerprint, assemblyId)) return 1;

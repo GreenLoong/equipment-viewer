@@ -1,6 +1,34 @@
 # 当前工作状态与中断恢复入口
 
+## 最新技术通过与交付待办（当前优先）
+
+2026-10-10：CadProcess905988有限自然退出确认窗口（非白名单，Active0门禁）、SceneB2E8有符号共面边缓存、converterC4BA严格真零面积49过滤已独审。全量18CTest全部通过32.07s；完整Python17通过25.343s，review独立纯3通过。fresh build-1.1/bin/cad-runtime已校473文件manifest与workerC4BA，旧runtime已保留到同bin/cad-runtime-v1.0-preserved-20261010-131853。
+
+Windows独立harness完整accepted1/FBO实际4samples、8×4加载销毁QQpointer归零（不是零泄漏证明）；新边cache六件真实STEP四views/axis/pull/清选保隔离/source/DBrestart完整通过。82原STEP现在严格import已成功保82实体/157558v/175598t，但第一次截图frame在屏内/client不同步的断言失败；仅测试加bounded3s几何稳定150ms+原双包含断言（6A5ACEF4），根正在重跑真实82，日志cad82-settled。不得把只import成功记整83验收通过。
+
+正式入口/Build/Package/Run都已统一build-1.1，源码已保存；下一步82完整native及制品技术审→交付文档/干净commit→新包实际启动/包内CAD→main/开发branch/v1.1.0远端。当前仅开发检查点，不创建1.1发布标签，不更新main，真人满意验收待体验。
+
+## 恢复后的最新诊断（优先，未完成交付）
+
+截至当前：Scene signed边缓存B2E8/新test184CF普通cube12棱、反向winding18棱；r07比较前关物理grid保严格几何像素，已通过。六轮构建后其他17个CTest通过，CAD process门禁尚未关闭；正常exit0/normal1仍观察到本Job livePID，QueryFullImage权限5、ToolhelpSnapshot不再含该PID，UI调查查询时间竞态，未放松Active0门禁；NoWindow显式flags0x8080400没单独解决，不把console假设写为确定原因。
+
+真实native6专项此前旧rawtriangle-edge版通过，新过滤边native6待复验。native82严格Qt导入已证JobActive0+exit0成功，但Controller保旧EQ001，真实错误CAD实体33共线退化三角。独立可信worker完整82/157558/175647成功，JSON在忽略.runtime/cad-tests-1.1/ventilator.json；仅供诊断，不能绕window原STEP导入验收。graph现在额外负责converter零面积三角诊断/最小受控tessellation修正，不删Solid/Face、不松严格parser；UI仍负责CadProcess竞态与真实诊断。root独占构建/native；review只读修正并保模拟tests。日志build-1.1-cad82-final.log、cad-diagnostic.log、ctest-sixth.log保留真实失败。
+
+下一步：两阻断修复→增量受影响测试→真实STEP6/82与原生harness→必要全量→独审→干净源码commit→独立1.1包→main/tag/开发分支GitHub。暂无1.1正式包/远端main更新/真人验收，不以功能存在记已交付。
+
+## 正式1.1装配查看集成（2026-10-10，当前优先）
+
+用户明确要求将独立v0.3 Demo合并正式软件，之前仅Demo/不替换限制不再约束此次正式集成。主树新branch codex/desktop-assembly-1.1，自111e8bb干净基线开始；旧1.0标签/包与独立Demo包保留，正常SQLite/MySQL/API不作测试数据目标。
+
+计划原生Qt集成：默认彩色/工程轴测/二维正交/同比例三视图，世界XYZ角落/模型旁/同时/隐藏，网格及默认关闭尺寸边缘读数；沿原包络中心auto/XYZ有序外向展开，选中件可控拉远/复原，稳定自动色与自定义；隔离时双击空白清选中保持隔离，清单双击或换有效件切隔离，显示全部明确退出。原设备/STEP/共享批注继续可用，源参数不能因演示位移写回库。
+
+assembly_state唯一负责SceneView及assembly_scene_tests；assembly_ui负责Window/Controller/main/CMake/窗口回归与82STEP样本；assembly_review只读业务独审+独立模拟用户harness；root负责公共文档/串行构建/实际运行/包/Git。先冻结Scene接口，再并行实现。新文件和变更脚本先读再执行。接口与Scene/Window/Controller/1.1版本/控件/82STEP/三项新回归已落盘；首轮scripts/build.ps1 -BuildDirectory build-1.1 session79504编译失败，Scene projected里误放return result(256)，graphowner修正并处理独审03/04线视图/高亮/双击拖动边界。日志build-1.1-first.log。尚未技术验收/包/远端发布/真人验收，勿记完成；root独占构建，roles可由followup唤醒。
+
+
 更新日期：2026-10-09。实际工程：D:/作业/简历/工作模拟。
+
+
+最新实施恢复检查点：二构建118/118链接通过，CAD runtime首次stage rename WinError5；既有sync工具-Offline重试成功到build-1.1/bin/cad-runtime，失败stage保留未删。initial CTest16/18（checkbox中心测试及R07dims前提）失败已按真实Space/显式开启修；新incremental全编译通过、第二CTest仍16/18（cad_import_process一次受控结果失败、独立test全显隐后缺focusVisible）。cad_import_process单项5.61秒通过，原因未确定，不宣称已修业务。独立harness新增focusVisible对齐用户“显示全部”入口，final test D824待编；Scene09E371释放时确认双击/切模式取消已静审，headerC042纯中文Doxygen注释；新CAD test58FB真实--assembly-preview-check可用（临时库/6或82/截图）。接下来毫米网格步长标示对齐、最后增量/fullCTest+原生专项/6&82STEP、独审→源码检查点→1.1包→Git远端。尚未完成1.1交付，不把16/18记全过。
 
 ## 当前目标与授权
 

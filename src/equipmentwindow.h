@@ -13,6 +13,9 @@ class QListWidget;
 class QPushButton;
 class CadImportProcess;
 class QCloseEvent;
+class QCheckBox;
+class QSlider;
+class QVBoxLayout;
 
 /** 设备浏览窗口：负责操作入口及显示，不直接执行SQL。 */
 class EquipmentWindow : public QWidget {
@@ -48,6 +51,10 @@ private:
     bool refreshEquipmentChoices();
     void showStatus(const QString &message, bool isError = false);
     void setCadBusy(bool busy);
+    void createAssemblyControls(QVBoxLayout *layout, QWidget *parent);
+    void updateAssemblyControls();
+    void updateColorSwatches();
+    void showAssemblyStatus(const QString &action);
 
     EquipmentController &controller_;
     QLabel *title_;
@@ -66,6 +73,10 @@ private:
     QLabel *positionX_;
     QLabel *positionY_;
     QLabel *positionZ_;
+    QLabel *displayPositionX_;
+    QLabel *displayPositionY_;
+    QLabel *displayPositionZ_;
+    QLabel *displayOffset_;
     QGroupBox *boxDimensions_;
     QLabel *sizeX_;
     QLabel *sizeY_;
@@ -82,6 +93,21 @@ private:
     QPushButton *importButton_;
     QPushButton *cadCancelButton_;
     QPushButton *sharedButton_;
+    QComboBox *viewModeSelector_;
+    QComboBox *projectionSelector_;
+    QComboBox *axisPlacementSelector_;
+    QComboBox *explodeAxisSelector_;
+    QComboBox *pullDirectionSelector_;
+    QCheckBox *dimensionsCheck_;
+    QCheckBox *gridCheck_;
+    QSlider *explosionSlider_;
+    QSlider *pullSlider_;
+    QLabel *explosionValue_;
+    QLabel *pullValue_;
+    QPushButton *partRestoreButton_;
+    QPushButton *focusButton_;
+    QPushButton *partColorButton_;
+    QPushButton *autoColorButton_;
     bool closing_ = false;
     bool cadBusy_ = false;
 };

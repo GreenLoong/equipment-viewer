@@ -18,12 +18,15 @@
 #include <QVector3D>
 #include <QVector4D>
 #include <QWheelEvent>
+#include <QHash>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
 #include <iomanip>
 #include <sstream>
+#include <map>
+#include <new>
 
 namespace {
 constexpr double pi = 3.14159265358979323846;
@@ -33,12 +36,25 @@ struct Triangle {
     float light = 1;
 };
 
+struct SceneEdge {
+    QVector3D a, b;
+    QString id;
+};
+
+struct ProjectedEdge {
+    QLineF line;
+    QString id;
+    QRect viewport;
+    float depth = 0;
+};
+
 struct ProjectedFace {
     QPolygonF polygon;
     std::array<float, 3> depths;
     QString id;
     QColor color;
     float depth = 0;
+    QRect viewport;
 };
 
 struct PartBounds {
@@ -60,6 +76,7 @@ QString millimeterText(long double value)
 
 struct SceneData {
     QList<Triangle> triangles;
+    QList<SceneEdge> edges;
     QSet<QString> hidden;
     QString selected;
     QString error;
@@ -69,6 +86,145 @@ struct SceneData {
     float yaw = 35;
     float pitch = 25;
     float distance = 4;
+    float minimumDistance = 2.5f;
+    SceneView::ViewMode viewMode = SceneView::ViewMode::Isometric;
+    SceneView::AxisPlacement axisPlacement = SceneView::AxisPlacement::Corner;
+    SceneView::ExplodeAxis explodeAxis = SceneView::ExplodeAxis::Auto;
+    int automaticAxis = 0;
+    bool dimensionsVisible = false;
+    bool gridVisible = true;
+    double explosionFraction = 0;
+    double pullFraction = 0;
+    int pullDirection = 1;
+    QVector3D target;
+    QHash<QString, QVector3D> centers;
+    QHash<QString, QVector3D> offsets;
+    QHash<QString, QColor> colors;
+    QHash<QString, QColor> defaultColors;
+
+    int activeAxis() const
+    {
+        return explodeAxis == SceneView::ExplodeAxis::Auto ? automaticAxis : int(explodeAxis) - 1;
+    }
+
+    void updateOffsets()
+    {
+        const int axis = activeAxis();
+        for (auto it = centers.cbegin(); it != centers.cend(); ++it) {
+            QVector3D offset;
+            const float difference = it.value()[axis]; // 归一化原整体包络中心为零。
+            const float sign = difference > 0 ? 1 : difference < 0 ? -1 : float(pullDirection);
+            offset[axis] = float(difference * explosionFraction * 2)
+                + (it.key() == selected ? float(pullFraction * 2.4) * sign : 0);
+            offsets.insert(it.key(), offset);
+        }
+    }
+
+    QList<QRect> viewports(const QSize &size) const
+    {
+        if (viewMode != SceneView::ViewMode::ThreeViews)
+            return {QRect(QPoint(), size)};
+        const int column = size.width() / 3;
+        return {QRect(0, 0, column, size.height()), QRect(column, 0, column, size.height()),
+                QRect(column * 2, 0, column, size.height())};
+    }
+
+    QColor background() const
+    {
+        if (viewMode == SceneView::ViewMode::Engineering) return QColor(247, 249, 252);
+        if (viewMode == SceneView::ViewMode::Isometric) return QColor(31, 40, 52);
+        return QColor(13, 18, 26);
+    }
+
+    struct GridStep {
+        long double millimeters = 0;
+        float units = 0;
+        int halfLines = 0;
+    };
+
+    GridStep gridStep() const
+    {
+        if (!std::isfinite(millimetersPerUnit) || millimetersPerUnit <= 0) return {};
+        // 以源毫米比例选1/2/5步长；不把固定归一化网格宣称为毫米刻度。
+        const long double targetMm = millimetersPerUnit * 0.4L;
+        const long double decade = std::pow(10.0L, std::floor(std::log10(targetMm)));
+        const long double mantissa = targetMm / decade;
+        const long double niceMm = (mantissa >= 5 ? 5 : mantissa >= 2 ? 2 : 1) * decade;
+        const long double units = niceMm / millimetersPerUnit;
+        if (!std::isfinite(niceMm) || niceMm <= 0 || !std::isfinite(units) || units <= 0) return {};
+        // 最多2*(2*14+1)=58条，不随极端坐标或滚轮放大生成无限网格。
+        return {niceMm, float(units), std::clamp(int(std::ceil(2 / units)), 1, 14)};
+    }
+
+    bool cachePartEdges(qsizetype firstTriangle)
+    {
+        struct Entry {
+            QVector3D a, b, normal;
+            int references = 0;
+            bool sharp = false;
+        };
+        // 每件独立缓存同渲染坐标的边；不跨零件合并，不以近似坐标吸并真实孔或细节。
+        const qsizetype budget = (triangles.size() - firstTriangle) * 3;
+        std::map<std::array<float, 6>, Entry> unique;
+        const float threshold = float(std::cos(pi / 180)); // 与Demo近似的1度折角阈值。
+        try {
+            for (qsizetype i = firstTriangle; i < triangles.size(); ++i) {
+                const auto &triangle = triangles[i];
+                const auto normal = QVector3D::crossProduct(triangle.b - triangle.a, triangle.c - triangle.a).normalized();
+                const std::array<QVector3D, 3> vertices = {triangle.a, triangle.b, triangle.c};
+                for (int side = 0; side < 3; ++side) {
+                    auto a = vertices[side], b = vertices[(side + 1) % 3];
+                    std::array<float, 3> left = {a.x(), a.y(), a.z()}, right = {b.x(), b.y(), b.z()};
+                    if (left == right) continue;
+                    if (right < left) { std::swap(left, right); std::swap(a, b); }
+                    const std::array<float, 6> key = {left[0], left[1], left[2], right[0], right[1], right[2]};
+                    auto found = unique.find(key);
+                    if (found == unique.end()) {
+                        if (qsizetype(unique.size()) >= budget) return false;
+                        unique.emplace(key, Entry{a, b, normal, 1, normal.isNull()});
+                    } else {
+                        auto &entry = found->second;
+                        ++entry.references;
+                        // 与EdgesGeometry同向法向比较；反向共边不可被abs误删为共面。
+                        entry.sharp = entry.sharp || normal.isNull()
+                            || QVector3D::dotProduct(entry.normal, normal) <= threshold;
+                    }
+                }
+            }
+            const QString id = firstTriangle < triangles.size() ? triangles[firstTriangle].id : QString();
+            for (const auto &pair : unique) {
+                const auto &entry = pair.second;
+                if (entry.references != 2 || entry.sharp) edges.append({entry.a, entry.b, id});
+            }
+            return true;
+        } catch (const std::bad_alloc &) {
+            return false;
+        }
+    }
+
+    QList<ProjectedEdge> projectedEdges(const QSize &size) const
+    {
+        QList<ProjectedEdge> result;
+        const auto ports = viewports(size);
+        for (int panel = 0; panel < ports.size(); ++panel) {
+            const auto port = ports[panel];
+            const auto mvp = matrix(port.size(), panel);
+            for (const auto &edge : edges) {
+                if (hidden.contains(edge.id)) continue;
+                const auto a = mvp * QVector4D(edge.a + offsets.value(edge.id), 1);
+                const auto b = mvp * QVector4D(edge.b + offsets.value(edge.id), 1);
+                if (a.w() <= 0 || b.w() <= 0) continue;
+                const auto an = a.toVector3DAffine(), bn = b.toVector3DAffine();
+                if (!std::isfinite(an.x()) || !std::isfinite(an.y()) || !std::isfinite(an.z())
+                    || !std::isfinite(bn.x()) || !std::isfinite(bn.y()) || !std::isfinite(bn.z())
+                    || an.z() < -1 || an.z() > 1 || bn.z() < -1 || bn.z() > 1) continue;
+                result.append({QLineF(QPointF(port.x() + (an.x() + 1) * port.width() / 2, port.y() + (1 - an.y()) * port.height() / 2),
+                    QPointF(port.x() + (bn.x() + 1) * port.width() / 2, port.y() + (1 - bn.y()) * port.height() / 2)),
+                    edge.id, port, (an.z() + bn.z()) / 2});
+            }
+        }
+        return result;
+    }
 
     bool hasVisibleGeometry() const
     {
@@ -96,7 +252,10 @@ struct SceneData {
             return result;
         // 透视相机中心深度为 distance；垂直视线的模型中心截面具有一致比例。
         // 此关系与实际40度FOV、距离、视口和归一化复用，不能用固定像素冒充毫米。
-        const long double pixelsPerUnit = size.height() / (2 * std::tan(20 * pi / 180) * distance);
+        const auto ports = viewports(size);
+        const long double pixelsPerUnit = (viewMode == SceneView::ViewMode::Isometric ? size.height()
+            : std::min(ports.first().width(), ports.first().height()))
+            / (2 * std::tan(20 * pi / 180) * distance);
         const long double targetPixels = std::clamp(size.width() * 0.2, 60.0, 150.0);
         const long double targetMm = targetPixels / pixelsPerUnit * millimetersPerUnit;
         const long double decade = std::pow(10.0L, std::floor(std::log10(targetMm)));
@@ -107,47 +266,76 @@ struct SceneData {
             result.append({{}, millimeterText(niceMm), niceMm,
                 QPointF(16, size.height() - 62), QPointF(16 + pixels, size.height() - 62), true});
         }
+        if (!dimensionsVisible) return result;
+        QList<PartBounds> visibleBounds;
+        QList<PartBounds> measureBounds;
         for (const auto &bound : bounds) {
-            if (bound.id != selected || hidden.contains(bound.id))
-                continue;
+            if (hidden.contains(bound.id)) continue;
+            visibleBounds.append(bound);
+            if (bound.id == selected) measureBounds.append(bound);
+        }
+        QString scope;
+        if (measureBounds.isEmpty() && visibleBounds.size() == 1) {
+            measureBounds = visibleBounds;
+            scope = QStringLiteral("可见件 ");
+        } else if (measureBounds.isEmpty() && !visibleBounds.isEmpty()) {
+            PartBounds aggregate = visibleBounds.first();
+            aggregate.cylinder = false;
+            aggregate.low += offsets.value(aggregate.id);
+            aggregate.high += offsets.value(aggregate.id);
+            for (const auto &bound : visibleBounds) for (int axis = 0; axis < 3; ++axis) {
+                aggregate.low[axis] = std::min(aggregate.low[axis], bound.low[axis] + offsets.value(bound.id)[axis]);
+                aggregate.high[axis] = std::max(aggregate.high[axis], bound.high[axis] + offsets.value(bound.id)[axis]);
+            }
+            for (int axis = 0; axis < 3; ++axis)
+                aggregate.millimeters[axis] = (static_cast<long double>(aggregate.high[axis]) - aggregate.low[axis]) * millimetersPerUnit;
+            measureBounds.append(aggregate);
+            scope = QStringLiteral("整体显示包络 ");
+        }
+        for (const auto &bound : measureBounds) {
             const std::array<QString, 3> axes = {QStringLiteral("X"), QStringLiteral("Y"), QStringLiteral("Z")};
             for (int axis = 0; axis < 3; ++axis) {
-                // 外包络三条相互垂直的边向外挪开，保持数据 X/Y/Z，而非屏幕轴。
-                QVector3D a = bound.low - QVector3D(0.08f, 0.08f, 0.08f);
-                QVector3D b = a;
-                a[axis] = bound.low[axis];
-                b[axis] = bound.high[axis];
-                QPointF start, end;
-                const QRectF safeArea(8, 8, size.width() - 16, size.height() - 106);
-                const bool visible = projectPoint(a, size, start) && projectPoint(b, size, end)
-                    && safeArea.contains(start) && safeArea.contains(end)
-                    && QLineF(start, end).length() >= 24;
+                // 原始XYZ数值集中在边缘；不随显示偏移/相机改写尺寸。
                 const QString detail = bound.cylinder
                     ? (axis == 0 ? QStringLiteral("（轴向）") : QStringLiteral("（外径）")) : QString();
-                result.append({axes[axis], axes[axis] + detail + QStringLiteral(" = ")
-                    + millimeterText(bound.millimeters[axis]), bound.millimeters[axis], start, end, visible});
+                result.append({axes[axis], scope + axes[axis] + detail + QStringLiteral(" = ")
+                    + millimeterText(bound.millimeters[axis]), bound.millimeters[axis],
+                    QPointF(12, (viewMode == SceneView::ViewMode::ThreeViews ? 40 : 16) + axis * 24),
+                    QPointF(12, (viewMode == SceneView::ViewMode::ThreeViews ? 40 : 16) + axis * 24), false});
             }
             break;
         }
         return result;
     }
 
-    QMatrix4x4 matrix(const QSize &size) const
+    QMatrix4x4 matrix(const QSize &size, int panel = 0) const
     {
         QMatrix4x4 projection, view;
-        projection.perspective(40, float(std::max(1, size.width())) / std::max(1, size.height()),
-                               0.05f, 100.0f);
+        const float aspect = float(std::max(1, size.width())) / std::max(1, size.height());
+        const float half = distance * float(std::tan(20 * pi / 180));
+        // 各三视图统一用较短边定义比例，分栏宽度相差一像素时也保持同比例。
+        const float halfX = half * std::max(1.0f, aspect), halfY = half * std::max(1.0f, 1 / aspect);
+        if (viewMode == SceneView::ViewMode::Isometric)
+            projection.perspective(40, aspect, std::max(0.000001f, distance * 0.001f), 200.0f);
+        else projection.ortho(-halfX, halfX, -halfY, halfY, 0.01f, 200.0f);
         // 数据 Z 向上；以球坐标构建相机，避免把数据轴旋转成 Qt 屏幕轴。
         const float y = yaw * float(pi / 180), p = pitch * float(pi / 180);
-        const QVector3D eye(distance * std::cos(p) * std::cos(y),
-                            distance * std::cos(p) * std::sin(y), distance * std::sin(p));
-        view.lookAt(eye, QVector3D(), QVector3D(0, 0, 1));
+        QVector3D direction(std::cos(p) * std::cos(y), std::cos(p) * std::sin(y), std::sin(p));
+        QVector3D up(0, 0, 1);
+        auto mode = viewMode;
+        if (mode == SceneView::ViewMode::ThreeViews)
+            mode = panel == 0 ? SceneView::ViewMode::Front : panel == 1 ? SceneView::ViewMode::Top : SceneView::ViewMode::Right;
+        if (mode == SceneView::ViewMode::Front) direction = QVector3D(0, -1, 0);
+        else if (mode == SceneView::ViewMode::Top) { direction = QVector3D(0, 0, 1); up = QVector3D(0, 1, 0); }
+        else if (mode == SceneView::ViewMode::Right) direction = QVector3D(1, 0, 0);
+        view.lookAt(target + direction * (viewMode == SceneView::ViewMode::Isometric ? distance : 80), target, up);
         return projection * view;
     }
 
     QColor color(const Triangle &triangle) const
     {
-        const QColor base = triangle.id == selected ? QColor(255, 175, 35) : QColor(89, 157, 205);
+        QColor base = colors.value(triangle.id, QColor(89, 157, 205));
+        if (viewMode == SceneView::ViewMode::Engineering) base = QColor(175, 184, 195);
         return QColor::fromRgbF(base.redF() * triangle.light, base.greenF() * triangle.light,
                                base.blueF() * triangle.light);
     }
@@ -155,29 +343,36 @@ struct SceneData {
     QList<ProjectedFace> projected(const QSize &size) const
     {
         QList<ProjectedFace> faces;
-        const QMatrix4x4 mvp = matrix(size);
+        const auto ports = viewports(size);
+        for (int panel = 0; panel < ports.size(); ++panel) {
+        const QRect port = ports[panel];
+        const QMatrix4x4 mvp = matrix(port.size(), panel);
         for (const auto &triangle : triangles) {
             if (hidden.contains(triangle.id))
                 continue;
             ProjectedFace face;
             face.id = triangle.id;
+            face.viewport = port;
             face.color = color(triangle);
             const std::array<QVector3D, 3> vertices = {triangle.a, triangle.b, triangle.c};
             bool valid = true;
             for (int i = 0; i < 3; ++i) {
-                const auto clip = mvp * QVector4D(vertices[i], 1);
+                const auto clip = mvp * QVector4D(vertices[i] + offsets.value(triangle.id), 1);
                 if (clip.w() <= 0) {
                     valid = false;
                     break;
                 }
                 const auto ndc = clip.toVector3DAffine();
-                face.polygon.append(QPointF((ndc.x() + 1) * size.width() / 2,
-                                           (1 - ndc.y()) * size.height() / 2));
+                if (!std::isfinite(ndc.x()) || !std::isfinite(ndc.y()) || !std::isfinite(ndc.z())
+                    || ndc.z() < -1 || ndc.z() > 1) { valid = false; break; }
+                face.polygon.append(QPointF(port.x() + (ndc.x() + 1) * port.width() / 2,
+                                           port.y() + (1 - ndc.y()) * port.height() / 2));
                 face.depths[i] = ndc.z();
                 face.depth += ndc.z() / 3;
             }
             if (valid)
                 faces.append(face);
+        }
         }
         return faces;
     }
@@ -188,6 +383,7 @@ struct SceneData {
         double depth = std::numeric_limits<double>::infinity();
         // 以投影三角形的重心坐标插值深度；同名零件仍使用 ID，隐藏对象已被排除。
         for (const auto &face : projected(size)) {
+            if (!face.viewport.contains(point.toPoint())) continue;
             const auto a = face.polygon[0], b = face.polygon[1], c = face.polygon[2];
             const double denominator = (b.y() - c.y()) * (a.x() - c.x())
                                      + (c.x() - b.x()) * (a.y() - c.y());
@@ -212,7 +408,7 @@ struct SceneData {
     void overlay(QPainter &painter, const QSize &size) const
     {
         painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(QColor(215, 225, 235));
+        painter.setPen(viewMode == SceneView::ViewMode::Engineering ? QColor(45, 55, 65) : QColor(215, 225, 235));
         if (!error.isEmpty())
             painter.drawText(QRect(20, 20, size.width() - 40, size.height() - 40),
                              Qt::AlignCenter | Qt::TextWordWrap, error);
@@ -221,10 +417,82 @@ struct SceneData {
         else if (std::all_of(triangles.begin(), triangles.end(),
                             [this](const Triangle &t) { return hidden.contains(t.id); }))
             painter.drawText(QRect(QPoint(), size), Qt::AlignCenter, QStringLiteral("全部零件已隐藏"));
+        const auto ports = viewports(size);
+        for (int panel = 0; panel < ports.size(); ++panel) {
+            const auto port = ports[panel];
+            painter.save();
+            painter.setClipRect(port);
+            const auto mvp = matrix(port.size(), panel);
+            const auto project = [&](const QVector3D &p) {
+                const auto clip = mvp * QVector4D(p, 1);
+                const auto ndc = clip.toVector3DAffine();
+                return QPointF(port.x() + (ndc.x() + 1) * port.width() / 2,
+                    port.y() + (1 - ndc.y()) * port.height() / 2);
+            };
+            if (gridVisible && hasVisibleGeometry()) {
+                const auto step = gridStep();
+                painter.setPen(QPen(viewMode == SceneView::ViewMode::Engineering ? QColor(110, 128, 148, 55) : QColor(155, 175, 198, 35), 0.7));
+                // 毫米步长映射到归一化XY平面；低透明度叠层不遮盖实体底色。
+                const float extent = step.halfLines * step.units;
+                for (int i = -step.halfLines; i <= step.halfLines && step.units > 0; ++i) {
+                    const float n = i * step.units;
+                    painter.drawLine(project(QVector3D(n, -extent, -1.1f)), project(QVector3D(n, extent, -1.1f)));
+                    painter.drawLine(project(QVector3D(-extent, n, -1.1f)), project(QVector3D(extent, n, -1.1f)));
+                }
+                if (step.millimeters > 0) {
+                    painter.setPen(viewMode == SceneView::ViewMode::Engineering ? QColor(80, 95, 110) : QColor(155, 174, 196));
+                    painter.drawText(QRect(port.left() + 8, port.bottom() - 134, port.width() - 16, 20), Qt::AlignRight,
+                        QStringLiteral("网格步长 ") + millimeterText(step.millimeters));
+                }
+            }
+            const auto triad = [&](bool corner) {
+                QVector3D modelCenter;
+                bool found = false;
+                for (const auto &bound : bounds) {
+                    if (hidden.contains(bound.id)) continue;
+                    if (bound.id == selected) { modelCenter = (bound.low + bound.high) / 2 + offsets.value(bound.id); found = true; break; }
+                }
+                if (!found) {
+                    QVector3D low(100, 100, 100), high(-100, -100, -100);
+                    for (const auto &bound : bounds) {
+                        if (hidden.contains(bound.id)) continue;
+                        for (int axis = 0; axis < 3; ++axis) {
+                            low[axis] = std::min(low[axis], bound.low[axis] + offsets.value(bound.id)[axis]);
+                            high[axis] = std::max(high[axis], bound.high[axis] + offsets.value(bound.id)[axis]);
+                        }
+                    }
+                    modelCenter = (low + high) / 2;
+                }
+                QPointF origin = corner ? QPointF(port.right() - 52, port.bottom() - 70) : project(modelCenter) + QPointF(48, 0);
+                origin.setX(std::clamp(origin.x(), double(port.left() + 38), double(port.right() - 38)));
+                origin.setY(std::clamp(origin.y(), double(port.top() + 80), double(port.bottom() - 50)));
+                const std::array<QColor, 3> colors = {QColor(233, 90, 85), QColor(65, 181, 113), QColor(78, 144, 234)};
+                const std::array<QString, 3> names = {QStringLiteral("X"), QStringLiteral("Y"), QStringLiteral("Z")};
+                for (int axis = 0; axis < 3; ++axis) {
+                    QVector3D delta;
+                    delta[axis] = 0.45f;
+                    QPointF direction = project(modelCenter + delta) - project(modelCenter);
+                    const double length = std::hypot(direction.x(), direction.y());
+                    if (length > 0.5) direction *= 30 / length;
+                    if (std::hypot(direction.x(), direction.y()) < 2) continue;
+                    painter.setPen(QPen(colors[axis], 2));
+                    painter.drawLine(origin, origin + direction);
+                    painter.drawText(origin + direction + QPointF(3, -3), names[axis]);
+                }
+            };
+            if (hasVisibleGeometry() && (axisPlacement == SceneView::AxisPlacement::Corner || axisPlacement == SceneView::AxisPlacement::Both)) triad(true);
+            if (hasVisibleGeometry() && (axisPlacement == SceneView::AxisPlacement::Model || axisPlacement == SceneView::AxisPlacement::Both)) triad(false);
+            if (viewMode == SceneView::ViewMode::ThreeViews) {
+                painter.setPen(QColor(160, 175, 192));
+                painter.drawRect(port.adjusted(0, 0, -1, -1));
+                painter.drawText(port.x() + 12, 22, panel == 0 ? QStringLiteral("正视图 XZ") : panel == 1 ? QStringLiteral("俯视图 XY") : QStringLiteral("右视图 YZ"));
+            }
+            painter.restore();
+        }
         const auto measurements = annotations(size);
         const QColor background(31, 40, 52, 235);
         QList<QRectF> labels;
-        int legendY = 16;
+        int legendY = viewMode == SceneView::ViewMode::ThreeViews ? 40 : 16;
         for (const auto &measurement : measurements) {
             const QColor color = measurement.axis == QStringLiteral("X") ? QColor(255, 160, 155)
                 : measurement.axis == QStringLiteral("Y") ? QColor(145, 225, 165)
@@ -244,12 +512,10 @@ struct SceneData {
                     QStringLiteral("模型中心截面参考比例（垂直视线）"));
                 continue;
             }
-            const QString legend = measurement.label + (measurement.lineVisible ? QString()
-                : QStringLiteral("；线未显示"));
+            const QString legend = measurement.label;
             QRectF legendRect = painter.fontMetrics().boundingRect(legend);
             legendRect.moveTopLeft(QPointF(12, legendY));
             legendRect.adjust(-3, -2, 3, 2);
-            painter.fillRect(legendRect, background);
             painter.drawText(QPointF(12, legendY + painter.fontMetrics().ascent()), legend);
             labels.append(legendRect);
             legendY += painter.fontMetrics().height() + 7;
@@ -271,7 +537,7 @@ struct SceneData {
             labels.append(labelRect);
         }
         painter.setPen(QColor(215, 225, 235));
-        painter.drawText(12, size.height() - 14, QStringLiteral("左键拖动旋转 · 滚轮缩放 · 短点击选择"));
+        painter.drawText(12, size.height() - 14, QStringLiteral("拖动旋转三维 · 滚轮缩放 · 单击零件选择 · 双击空白取消选择"));
     }
 };
 
@@ -282,16 +548,33 @@ protected:
     void paintEvent(QPaintEvent *) override
     {
         QPainter painter(this);
-        painter.fillRect(rect(), QColor(31, 40, 52));
+        painter.fillRect(rect(), data_->background());
         painter.setRenderHint(QPainter::Antialiasing);
         auto faces = data_->projected(size());
+        const bool lines = data_->viewMode == SceneView::ViewMode::Front || data_->viewMode == SceneView::ViewMode::Top
+            || data_->viewMode == SceneView::ViewMode::Right || data_->viewMode == SceneView::ViewMode::ThreeViews;
         // 无上下文时采用透明可解释的画家排序；相交几何的遮挡精度低于原生深度缓冲。
         std::stable_sort(faces.begin(), faces.end(),
                          [](const ProjectedFace &a, const ProjectedFace &b) { return a.depth > b.depth; });
         for (const auto &face : faces) {
+            if (lines) continue;
+            painter.save();
+            painter.setClipRect(face.viewport);
             painter.setBrush(face.color);
-            painter.setPen(QPen(face.color.darker(120), 0.5));
+            painter.setPen(Qt::NoPen);
             painter.drawPolygon(face.polygon);
+            painter.restore();
+        }
+        auto edges = data_->projectedEdges(size());
+        std::stable_sort(edges.begin(), edges.end(), [](const ProjectedEdge &a, const ProjectedEdge &b) { return a.depth > b.depth; });
+        for (const auto &edge : edges) {
+            const bool selected = edge.id == data_->selected;
+            if (!selected && !lines && data_->viewMode != SceneView::ViewMode::Engineering) continue;
+            painter.save();
+            painter.setClipRect(edge.viewport);
+            painter.setPen(QPen(selected ? QColor(255, 191, 66) : lines ? QColor(193, 206, 222) : QColor(61, 71, 87), selected ? 1.5 : 0.7));
+            painter.drawLine(edge.line);
+            painter.restore();
         }
         data_->overlay(painter, size());
     }
@@ -342,14 +625,14 @@ protected:
         // paintGL进入时Qt已绑定真正的绘制FBO；initializeGL时查询可能仍是默认缓冲。
         GLint actualSamples = 0;
         glGetIntegerv(GL_SAMPLES, &actualSamples);
-        data_->renderer = QStringLiteral("原生OpenGL（透视投影与深度缓冲）；MSAA请求4，绘制FBO实际samples=%1%2")
+        data_->renderer = QStringLiteral("原生OpenGL（工程/透视投影与深度缓冲）；MSAA请求4，绘制FBO实际samples=%1%2")
             .arg(actualSamples).arg(actualSamples > 0 ? QString() : QStringLiteral("（驱动未启用多重采样）"));
-        glClearColor(31.0f / 255, 40.0f / 255, 52.0f / 255, 1);
+        const QColor background = data_->background();
+        glClearColor(float(background.redF()), float(background.greenF()), float(background.blueF()), 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         if (initialized_) {
             glEnable(GL_DEPTH_TEST);
             program_->bind();
-            program_->setUniformValue("mvp", data_->matrix(size()));
             buffer_.bind();
             QList<float> vertices;
             vertices.reserve(data_->triangles.size() * 18);
@@ -358,9 +641,10 @@ protected:
                     continue;
                 const QColor color = data_->color(triangle);
                 for (const auto &point : {triangle.a, triangle.b, triangle.c}) {
-                    vertices.append(point.x());
-                    vertices.append(point.y());
-                    vertices.append(point.z());
+                    const auto displayed = point + data_->offsets.value(triangle.id);
+                    vertices.append(displayed.x());
+                    vertices.append(displayed.y());
+                    vertices.append(displayed.z());
                     vertices.append(float(color.redF()));
                     vertices.append(float(color.greenF()));
                     vertices.append(float(color.blueF()));
@@ -373,7 +657,47 @@ protected:
             program_->enableAttributeArray(color);
             program_->setAttributeBuffer(position, GL_FLOAT, 0, 3, 6 * sizeof(float));
             program_->setAttributeBuffer(color, GL_FLOAT, 3 * sizeof(float), 3, 6 * sizeof(float));
-            glDrawArrays(GL_TRIANGLES, 0, int(vertices.size() / 6));
+            const auto ports = data_->viewports(size());
+            const float ratio = float(devicePixelRatioF());
+            const bool lines = data_->viewMode == SceneView::ViewMode::Front || data_->viewMode == SceneView::ViewMode::Top
+                || data_->viewMode == SceneView::ViewMode::Right || data_->viewMode == SceneView::ViewMode::ThreeViews;
+            if (!lines) {
+                glEnable(GL_POLYGON_OFFSET_FILL);
+                glPolygonOffset(1, 1);
+            }
+            for (int panel = 0; panel < ports.size(); ++panel) {
+                const auto port = ports[panel];
+                glViewport(qRound(port.x() * ratio), qRound((height() - port.bottom() - 1) * ratio),
+                    qRound(port.width() * ratio), qRound(port.height() * ratio));
+                program_->setUniformValue("mvp", data_->matrix(port.size(), panel));
+                if (!lines) glDrawArrays(GL_TRIANGLES, 0, int(vertices.size() / 6));
+            }
+            if (!lines) glDisable(GL_POLYGON_OFFSET_FILL);
+            if (lines || data_->viewMode == SceneView::ViewMode::Engineering || !data_->selected.isEmpty()) {
+                QList<float> edges;
+                edges.reserve(data_->edges.size() * 12);
+                for (const auto &edge : data_->edges) {
+                    if (data_->hidden.contains(edge.id)) continue;
+                    const bool selected = edge.id == data_->selected;
+                    if (selected || lines || data_->viewMode == SceneView::ViewMode::Engineering) {
+                    const QColor edgeColor = selected ? QColor(255, 191, 66) : lines ? QColor(193, 206, 222) : QColor(61, 71, 87);
+                    for (const auto &point : {edge.a, edge.b}) {
+                        const auto displayed = point + data_->offsets.value(edge.id);
+                        edges.append(displayed.x()); edges.append(displayed.y()); edges.append(displayed.z());
+                        edges.append(float(edgeColor.redF())); edges.append(float(edgeColor.greenF())); edges.append(float(edgeColor.blueF()));
+                    }
+                    }
+                }
+                buffer_.allocate(edges.constData(), int(edges.size() * sizeof(float)));
+                for (int panel = 0; panel < ports.size(); ++panel) {
+                    const auto port = ports[panel];
+                    glViewport(qRound(port.x() * ratio), qRound((height() - port.bottom() - 1) * ratio),
+                        qRound(port.width() * ratio), qRound(port.height() * ratio));
+                    program_->setUniformValue("mvp", data_->matrix(port.size(), panel));
+                    glDrawArrays(GL_LINES, 0, int(edges.size() / 6));
+                }
+            }
+            glViewport(0, 0, qRound(width() * ratio), qRound(height() * ratio));
             program_->disableAttributeArray(position);
             program_->disableAttributeArray(color);
             buffer_.release();
@@ -420,6 +744,7 @@ struct SceneView::Impl {
     QPoint last;
     bool pressing = false;
     bool dragged = false;
+    bool doubleClick = false;
 };
 
 SceneView::SceneView(QWidget *parent) : QWidget(parent), impl_(std::make_unique<Impl>())
@@ -476,13 +801,22 @@ SceneView::~SceneView()
 
 void SceneView::setParts(const QList<Part> &parts)
 {
+    // 异步CAD重载取消旧模型的未完成手势，释放事件不能作用于新模型。
+    impl_->pressing = impl_->dragged = impl_->doubleClick = false;
     auto &data = impl_->data;
     data.triangles.clear();
+    data.edges.clear();
     data.bounds.clear();
     data.millimetersPerUnit = 0;
     data.error.clear();
     data.hidden.clear();
     data.selected.clear();
+    data.centers.clear();
+    data.offsets.clear();
+    data.colors.clear();
+    data.defaultColors.clear();
+    data.explosionFraction = data.pullFraction = 0;
+    data.target = QVector3D();
     long double divisor = 1;
     if (parts.size() > 10000) {
         data.error = QStringLiteral("三维场景超过10000个零件限制");
@@ -490,7 +824,13 @@ void SceneView::setParts(const QList<Part> &parts)
         return;
     }
     quint64 meshVertices = 0, meshTriangles = 0;
+    QSet<QString> ids;
     for (const auto &part : parts) {
+        if (part.id.trimmed().isEmpty() || ids.contains(part.id)) {
+            data.error = QStringLiteral("零件ID为空或重复：%1").arg(part.id);
+            break;
+        }
+        ids.insert(part.id);
         const bool solidDimensions = positive(part.sizeX) && positive(part.sizeY) && positive(part.sizeZ);
         const bool shapeValid = part.shape == QStringLiteral("box")
             ? solidDimensions
@@ -571,6 +911,39 @@ void SceneView::setParts(const QList<Part> &parts)
                               - (low[axis] + high[axis]) / 2) / span * 2);
         return QVector3D(result[0], result[1], result[2]);
     };
+    std::array<long double, 3> centerLow = {2, 2, 2}, centerHigh = {-2, -2, -2};
+    QSet<QRgb> usedColors;
+    const std::array<QColor, 6> palette = {QColor("#3988e8"), QColor("#27bfd0"), QColor("#f28d38"),
+        QColor("#ebc54c"), QColor("#9869d9"), QColor("#49b981")};
+    for (int i = 0; i < parts.size(); ++i) {
+        const auto &part = parts[i];
+        data.centers.insert(part.id, point(part, 0, 0, 0));
+        const std::array<double, 3> coordinates = {part.positionX, part.positionY, part.positionZ};
+        for (int axis = 0; axis < 3; ++axis) {
+            centerLow[axis] = std::min(centerLow[axis], coordinates[axis] / divisor);
+            centerHigh[axis] = std::max(centerHigh[axis], coordinates[axis] / divisor);
+        }
+        QColor color = i < int(palette.size()) ? palette[i]
+            : QColor::fromHslF(std::fmod(i * 0.381966011250105, 1.0), 0.65, 0.48 + ((i / 12) % 3) * 0.08);
+        QRgb rgb = color.rgb() & 0xffffff;
+        while (usedColors.contains(rgb)) rgb = (rgb + 1) & 0xffffff;
+        usedColors.insert(rgb);
+        color = QColor::fromRgb(rgb);
+        data.colors.insert(part.id, color);
+        data.defaultColors.insert(part.id, color);
+    }
+    long double maxSpread = -1;
+    for (int axis = 0; axis < 3; ++axis) {
+        const long double spread = centerHigh[axis] - centerLow[axis];
+        if (spread > maxSpread) { maxSpread = spread; data.automaticAxis = axis; }
+    }
+    if (maxSpread <= 0) {
+        long double maximum = -1;
+        for (int axis = 0; axis < 3; ++axis) if (high[axis] - low[axis] > maximum) {
+            maximum = high[axis] - low[axis]; data.automaticAxis = axis;
+        }
+    }
+    data.updateOffsets();
     // 与渲染相同的float顶点必须仍能表达每件XYZ跨度；否则标线不能声称显示了真实尺寸。
     for (const auto &part : parts) {
         const std::array<long double, 3> dimensions = part.shape != QStringLiteral("cylinder")
@@ -597,6 +970,7 @@ void SceneView::setParts(const QList<Part> &parts)
         data.triangles.append({a, b, c, part.id, light});
     };
     for (const auto &part : parts) {
+        const qsizetype firstTriangle = data.triangles.size();
         if (part.shape == QStringLiteral("box")) {
             std::array<QVector3D, 8> vertices;
             for (int i = 0; i < 8; ++i)
@@ -632,13 +1006,24 @@ void SceneView::setParts(const QList<Part> &parts)
                 triangle(part, point(part, static_cast<long double>(*part.length) / 2, 0, 0), rightA, rightB);
             }
         }
+        if (!data.cachePartEdges(firstTriangle)) {
+            data.error = QStringLiteral("零件 %1 的边缓存超出三角形资源预算或内存不足").arg(part.id);
+            data.edges.clear(); data.triangles.clear(); data.bounds.clear();
+            data.centers.clear(); data.offsets.clear(); data.colors.clear(); data.defaultColors.clear();
+            data.millimetersPerUnit = 0;
+            fitAll();
+            return;
+        }
     }
     fitAll();
 }
 
 void SceneView::setSelectedPart(const QString &id)
 {
-    impl_->data.selected = id;
+    const QString selected = impl_->data.centers.contains(id) ? id : QString();
+    if (selected != impl_->data.selected) impl_->data.pullFraction = 0;
+    impl_->data.selected = selected;
+    impl_->data.updateOffsets();
     impl_->surface->update();
 }
 
@@ -651,12 +1036,157 @@ void SceneView::setHiddenParts(const QSet<QString> &ids)
 void SceneView::fitAll()
 {
     impl_->data.yaw = 35;
-    impl_->data.pitch = 25;
-    // 归一化后包围盒在[-1,1]内；窄视口需更远距离才能完整容纳。
-    const float aspect = float(std::max(1, impl_->surface->width())) / std::max(1, impl_->surface->height());
-    impl_->data.distance = std::min(60.0f, 7.2f / std::min(1.0f, aspect));
+    impl_->data.pitch = impl_->data.viewMode == ViewMode::Isometric ? 25 : 35.264f;
+    if (impl_->data.viewMode == ViewMode::Isometric && impl_->data.explosionFraction == 0 && impl_->data.pullFraction == 0) {
+        // 保留既有彩色透视“查看全部”相机；可见/选中聚焦用独立入口。
+        impl_->data.target = QVector3D();
+        const float aspect = float(std::max(1, impl_->surface->width())) / std::max(1, impl_->surface->height());
+        impl_->data.distance = std::min(60.0f, 7.2f / std::min(1.0f, aspect));
+        impl_->data.minimumDistance = 2.5f;
+        impl_->surface->update();
+    } else focusVisible();
+}
+
+void SceneView::setViewMode(ViewMode mode)
+{
+    if (mode < ViewMode::Isometric || mode > ViewMode::ThreeViews) return;
+    impl_->pressing = impl_->dragged = impl_->doubleClick = false;
+    impl_->data.viewMode = mode;
+    fitAll();
+}
+
+void SceneView::setAxisPlacement(AxisPlacement placement)
+{
+    if (placement < AxisPlacement::Corner || placement > AxisPlacement::Hidden) return;
+    impl_->data.axisPlacement = placement;
     impl_->surface->update();
 }
+
+void SceneView::setDimensionsVisible(bool visible) { impl_->data.dimensionsVisible = visible; impl_->surface->update(); }
+void SceneView::setGridVisible(bool visible) { impl_->data.gridVisible = visible; impl_->surface->update(); }
+void SceneView::setExplodeAxis(ExplodeAxis axis)
+{
+    if (axis < ExplodeAxis::Auto || axis > ExplodeAxis::Z) return;
+    impl_->data.explodeAxis = axis;
+    impl_->data.updateOffsets();
+    focusVisible();
+}
+
+bool SceneView::setExplosionFraction(double fraction)
+{
+    if (!std::isfinite(fraction) || fraction < 0 || fraction > 1 || !impl_->data.error.isEmpty()) return false;
+    impl_->data.explosionFraction = fraction;
+    impl_->data.updateOffsets();
+    focusVisible();
+    return true;
+}
+
+bool SceneView::setPullFraction(double fraction)
+{
+    if (!impl_->data.centers.contains(impl_->data.selected) || !std::isfinite(fraction) || fraction < 0 || fraction > 1
+        || !impl_->data.error.isEmpty()) return false;
+    impl_->data.pullFraction = fraction;
+    impl_->data.updateOffsets();
+    focusVisible();
+    return true;
+}
+
+bool SceneView::setPullDirection(int direction)
+{
+    if (direction != -1 && direction != 1) return false;
+    impl_->data.pullDirection = direction;
+    impl_->data.updateOffsets();
+    focusVisible();
+    return true;
+}
+
+void SceneView::restoreDisplayOffsets()
+{
+    impl_->data.explosionFraction = impl_->data.pullFraction = 0;
+    impl_->data.updateOffsets();
+    focusVisible();
+}
+
+namespace {
+bool focusBounds(SceneData &data, const QSize &size, const QString &only = {})
+{
+    QVector3D low(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+    QVector3D high(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
+    bool found = false;
+    for (const auto &bound : data.bounds) {
+        if (data.hidden.contains(bound.id) || (!only.isEmpty() && bound.id != only)) continue;
+        found = true;
+        for (int axis = 0; axis < 3; ++axis) {
+            low[axis] = std::min(low[axis], bound.low[axis] + data.offsets.value(bound.id)[axis]);
+            high[axis] = std::max(high[axis], bound.high[axis] + data.offsets.value(bound.id)[axis]);
+        }
+    }
+    if (!found || !data.error.isEmpty()) return false;
+    data.target = (low + high) / 2;
+    const float radius = std::max(0.002f, (high - low).length() / 2);
+    data.minimumDistance = radius * 1.1f;
+    const QSize panel = data.viewports(size).first().size();
+    const float aspect = float(std::max(1, panel.width())) / std::max(1, panel.height());
+    const float margin = data.viewMode == SceneView::ViewMode::Isometric ? 1 / std::min(1.0f, aspect) : 1.0f;
+    data.distance = std::clamp(radius * 3.4f * margin, 0.02f, 60.0f);
+    return true;
+}
+}
+
+void SceneView::focusVisible()
+{
+    if (!focusBounds(impl_->data, impl_->surface->size())) { impl_->data.target = QVector3D(); impl_->data.distance = 7.2f; }
+    impl_->surface->update();
+}
+
+bool SceneView::focusSelected()
+{
+    if (impl_->data.selected.isEmpty() || !focusBounds(impl_->data, impl_->surface->size(), impl_->data.selected)) return false;
+    impl_->surface->update();
+    return true;
+}
+
+bool SceneView::setPartColor(const QString &id, const QColor &color)
+{
+    if (!impl_->data.colors.contains(id) || !color.isValid()) return false;
+    impl_->data.colors.insert(id, QColor(color.red(), color.green(), color.blue()));
+    impl_->surface->update();
+    return true;
+}
+
+bool SceneView::resetPartColor(const QString &id)
+{
+    return impl_->data.defaultColors.contains(id) && setPartColor(id, impl_->data.defaultColors.value(id));
+}
+
+QColor SceneView::partColor(const QString &id) const { return impl_->data.colors.value(id); }
+int SceneView::partEdgeCount(const QString &id) const
+{
+    return int(std::count_if(impl_->data.edges.cbegin(), impl_->data.edges.cend(),
+        [&id](const SceneEdge &edge) { return edge.id == id; }));
+}
+std::array<long double, 3> SceneView::displayOffset(const QString &id) const
+{
+    const auto offset = impl_->data.offsets.value(id);
+    return {offset.x() * impl_->data.millimetersPerUnit, offset.y() * impl_->data.millimetersPerUnit,
+            offset.z() * impl_->data.millimetersPerUnit};
+}
+SceneView::ViewMode SceneView::viewMode() const { return impl_->data.viewMode; }
+SceneView::AxisPlacement SceneView::axisPlacement() const { return impl_->data.axisPlacement; }
+SceneView::ExplodeAxis SceneView::resolvedExplodeAxis() const { return ExplodeAxis(impl_->data.activeAxis() + 1); }
+bool SceneView::dimensionsVisible() const { return impl_->data.dimensionsVisible; }
+bool SceneView::gridVisible() const { return impl_->data.gridVisible; }
+long double SceneView::gridStepMillimeters() const
+{
+    return impl_->data.hasVisibleGeometry() ? impl_->data.gridStep().millimeters : 0;
+}
+int SceneView::gridLineCount() const
+{
+    const auto step = impl_->data.gridStep();
+    return impl_->data.gridVisible && impl_->data.hasVisibleGeometry() && step.units > 0 ? 2 * (2 * step.halfLines + 1) : 0;
+}
+double SceneView::explosionFraction() const { return impl_->data.explosionFraction; }
+double SceneView::pullFraction() const { return impl_->data.pullFraction; }
 
 QString SceneView::rendererDescription() const
 {
@@ -673,12 +1203,17 @@ bool SceneView::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched != impl_->surface)
         return QWidget::eventFilter(watched, event);
+    if (event->type() == QEvent::Hide || event->type() == QEvent::UngrabMouse || event->type() == QEvent::WindowDeactivate) {
+        impl_->pressing = impl_->dragged = impl_->doubleClick = false;
+        return QWidget::eventFilter(watched, event);
+    }
     if (event->type() == QEvent::MouseButtonPress) {
         auto *mouse = static_cast<QMouseEvent *>(event);
         if (mouse->button() == Qt::LeftButton) {
             impl_->press = impl_->last = mouse->position().toPoint();
             impl_->pressing = true;
             impl_->dragged = false;
+            impl_->doubleClick = false;
             return true;
         }
     } else if (event->type() == QEvent::MouseMove && impl_->pressing) {
@@ -687,7 +1222,7 @@ bool SceneView::eventFilter(QObject *watched, QEvent *event)
         // 一旦超过6像素就保持拖动状态，即使释放时又回到原点也不能触发拾取。
         if ((current - impl_->press).manhattanLength() > 6)
             impl_->dragged = true;
-        if (impl_->dragged) {
+        if (impl_->dragged && (impl_->data.viewMode == ViewMode::Isometric || impl_->data.viewMode == ViewMode::Engineering)) {
             // R07真实反馈：只反转水平方向，保留垂直旋转、短点选和拖动阈值语义。
             impl_->data.yaw -= (current.x() - impl_->last.x()) * 0.5f;
             impl_->data.pitch = std::clamp(impl_->data.pitch + (current.y() - impl_->last.y()) * 0.5f, -85.0f, 85.0f);
@@ -700,15 +1235,31 @@ bool SceneView::eventFilter(QObject *watched, QEvent *event)
         auto *mouse = static_cast<QMouseEvent *>(event);
         if (mouse->button() == Qt::LeftButton && impl_->pressing) {
             impl_->pressing = false;
-            if (!impl_->dragged && (mouse->position().toPoint() - impl_->press).manhattanLength() <= 6 && onPartPicked)
-                onPartPicked(impl_->data.pick(mouse->position(), impl_->surface->size()));
+            const bool doubleClick = impl_->doubleClick;
+            impl_->doubleClick = false;
+            if (!impl_->dragged && (mouse->position().toPoint() - impl_->press).manhattanLength() <= 6 && onPartPicked) {
+                const QString picked = impl_->data.pick(mouse->position(), impl_->surface->size());
+                // 回调可触发窗口销毁；回调后不再访问impl。
+                const auto callback = onPartPicked;
+                if (!picked.isEmpty() || doubleClick) callback(picked);
+            }
+            return true;
+        }
+    } else if (event->type() == QEvent::MouseButtonDblClick) {
+        const auto *mouse = static_cast<QMouseEvent *>(event);
+        if (mouse->button() == Qt::LeftButton) {
+            // 第二击仍须释放确认；累计拖动越阈值后回原位也不取消选择。
+            impl_->press = impl_->last = mouse->position().toPoint();
+            impl_->pressing = true;
+            impl_->dragged = false;
+            impl_->doubleClick = true;
             return true;
         }
     } else if (event->type() == QEvent::Wheel) {
         auto *wheel = static_cast<QWheelEvent *>(event);
         const float factor = std::exp(-std::clamp(wheel->angleDelta().y(), -1200, 1200) / 1200.0f);
         // 保持相机在包围球之外，防止近裁切面穿过几何导致软件拾取与画面不一致。
-        impl_->data.distance = std::clamp(impl_->data.distance * factor, 2.5f, 60.0f);
+        impl_->data.distance = std::clamp(impl_->data.distance * factor, impl_->data.minimumDistance, 60.0f);
         impl_->surface->update();
         return true;
     }

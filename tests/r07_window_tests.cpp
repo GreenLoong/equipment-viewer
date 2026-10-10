@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QImage>
@@ -159,8 +160,9 @@ bool windowBehavior()
     REQUIRE(controller.isIsolationActive() && controller.hiddenPartIds() == hideForA);
     REQUIRE(clickPart(list, bId));
     REQUIRE(controller.selectedPartId() == bId && id->text() == bId && material->text() == QStringLiteral("45钢"));
-    REQUIRE(controller.isIsolationActive() && controller.hiddenPartIds() == hideForA);
-    REQUIRE(capture(window, QStringLiteral("01-isolation-a-single-b-properties.png")));
+    // 1.1真人契约：隔离中有效单击即切换目标，清选中仍保隔离。
+    REQUIRE(controller.isIsolationActive() && controller.hiddenPartIds() == hideForB);
+    REQUIRE(capture(window, QStringLiteral("01-isolation-single-b-visible.png")));
     REQUIRE(clickPart(list, bId, true));
     REQUIRE(waitUntil([&] { return controller.isIsolationActive() && controller.hiddenPartIds() == hideForB; }));
     REQUIRE(controller.selectedPartId() == bId && id->text() == bId);
@@ -169,14 +171,14 @@ bool windowBehavior()
         REQUIRE(clickPart(list, bId, true));
         REQUIRE(controller.isIsolationActive() && controller.hiddenPartIds() == hideForB && controller.selectedPartId() == bId);
     }
-    QTextStream(stdout) << "R07_WINDOW singleKeepsIsolation=1 doubleSwitchesExactId=1 repeatedDouble=1 sameNames=1" << Qt::endl;
+    QTextStream(stdout) << "R07_WINDOW singleSwitchesIsolation=1 doubleKeepsExactId=1 repeatedDouble=1 sameNames=1" << Qt::endl;
 
     // 过滤清单不能退出隔离或改变可见性；选择被过滤时只有选择/属性清空。
     searchText(search, QStringLiteral("R07-C"));
     REQUIRE(list->count() == 1 && controller.selectedPartId().isEmpty() && id->text().isEmpty());
     REQUIRE(controller.isIsolationActive() && controller.hiddenPartIds() == hideForB);
     REQUIRE(clickPart(list, cId));
-    REQUIRE(controller.hiddenPartIds() == hideForB && id->text() == cId);
+    REQUIRE(controller.hiddenPartIds() == hideForC && id->text() == cId);
     REQUIRE(clickPart(list, cId, true));
     REQUIRE(waitUntil([&] { return controller.hiddenPartIds() == hideForC; }));
     REQUIRE(controller.isIsolationActive() && controller.selectedPartId() == cId && search->text() == QStringLiteral("R07-C"));
@@ -206,6 +208,10 @@ bool windowBehavior()
     REQUIRE(controller.isIsolationActive() && controller.hiddenPartIds() == hideForB);
 
     // 方向和缩放各自实际变化后，回正恢复基准图；不更改选择/隐藏/隔离。
+    auto *dimensions = window.findChild<QCheckBox *>(QStringLiteral("dimensionsCheck"));
+    REQUIRE(dimensions && !dimensions->isChecked());
+    dimensions->setFocus(); QTest::keyClick(dimensions, Qt::Key_Space); // 真键盘切换，不点击可能留白的控件中心。
+    REQUIRE(dimensions->isChecked() && scene->dimensionsVisible());
     QTest::mouseClick(reset, Qt::LeftButton);
     QTest::qWait(80);
     const QImage baseline = scenePixels(*scene);

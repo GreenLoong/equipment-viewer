@@ -122,6 +122,8 @@ int main(int argc, char **argv)
     scene.onPartPicked = [&](const QString &id) { ++picks; picked = id; };
     scene.setParts({knownBox(QStringLiteral("KNOWN"))});
     scene.setSelectedPart(QStringLiteral("KNOWN"));
+    REQUIRE(scene.measurementAnnotations().size() == 1 && scene.measurementAnnotations().first().axis.isEmpty());
+    scene.setDimensionsVisible(true);
     app.processEvents();
     auto annotations = scene.measurementAnnotations();
     REQUIRE(annotations.size() == 4);
@@ -131,16 +133,11 @@ int main(int argc, char **argv)
     REQUIRE(annotations[3].axis == QStringLiteral("Z") && annotations[3].millimeters == 60);
     const long double expectedScale = canvas->height() / (2 * std::tan(20 * std::acos(-1.0) / 180) * 7.2 * 50);
     REQUIRE(std::abs(pixelsPerMm(annotations[0]) / expectedScale - 1) < 1e-6L);
-    REQUIRE(QLineF(annotations[1].start, expectedPoint(canvas->size(), QVector3D(-1, -0.88f, -0.68f), 35, 25)).length() < 0.01);
-    REQUIRE(QLineF(annotations[2].end, expectedPoint(canvas->size(), QVector3D(-1.08f, 0.8f, -0.68f), 35, 25)).length() < 0.01);
-    REQUIRE(QLineF(annotations[3].end, expectedPoint(canvas->size(), QVector3D(-1.08f, -0.88f, 0.6f), 35, 25)).length() < 0.01);
+    for (int axis = 1; axis <= 3; ++axis) REQUIRE(!annotations[axis].lineVisible && annotations[axis].start.x() <= 16);
     const QImage knownImage = capture(scene, canvas);
     REQUIRE(knownImage.save(destination.filePath(QStringLiteral("r07-box.png"))));
     // 验证实际像素存在标尺及XYZ线，不以仅生成注释数据替代真正绘制。
     REQUIRE(hasLineColor(knownImage, (annotations[0].start + annotations[0].end) / 2, QColor(215, 225, 235)));
-    REQUIRE(hasLineColor(knownImage, annotations[1].start, QColor(255, 160, 155)));
-    REQUIRE(hasLineColor(knownImage, annotations[2].end, QColor(145, 225, 165)));
-    REQUIRE(hasLineColor(knownImage, annotations[3].end, QColor(150, 190, 255)));
     if (auto *gl = qobject_cast<QOpenGLWidget *>(canvas)) {
         REQUIRE(gl->grabFramebuffer().save(destination.filePath(QStringLiteral("r07-box-framebuffer.png"))));
         REQUIRE(scene.screen()->grabWindow(scene.winId()).save(destination.filePath(QStringLiteral("r07-box-screen.png"))));
@@ -151,13 +148,13 @@ int main(int argc, char **argv)
     drag(app, canvas, QPointF(60, 0));
     REQUIRE(picks == beforeDrag);
     annotations = scene.measurementAnnotations();
-    REQUIRE(QLineF(annotations[1].start, expectedPoint(canvas->size(), QVector3D(-1, -0.88f, -0.68f), 5, 25)).length() < 0.01);
+    REQUIRE(capture(scene, canvas) != knownImage);
     REQUIRE(capture(scene, canvas).save(destination.filePath(QStringLiteral("r07-horizontal.png"))));
     scene.fitAll();
     drag(app, canvas, QPointF(0, 30));
     REQUIRE(picks == beforeDrag);
     annotations = scene.measurementAnnotations();
-    REQUIRE(QLineF(annotations[1].start, expectedPoint(canvas->size(), QVector3D(-1, -0.88f, -0.68f), 35, 40)).length() < 0.01);
+    REQUIRE(capture(scene, canvas) != knownImage);
     scene.fitAll();
     const long double beforeZoom = pixelsPerMm(scene.measurementAnnotations()[0]);
     const QPointF center = canvas->rect().center();
@@ -174,19 +171,22 @@ int main(int argc, char **argv)
     scene.setHiddenParts({QStringLiteral("KNOWN")});
     REQUIRE(scene.measurementAnnotations().isEmpty());
     QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
+    REQUIRE(picked == QStringLiteral("KNOWN"));
+    QTest::mouseDClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
     REQUIRE(picked.isEmpty());
     scene.fitAll();
     REQUIRE(scene.measurementAnnotations().isEmpty());
     scene.setHiddenParts({});
     REQUIRE(scene.measurementAnnotations().size() == 4);
     scene.setSelectedPart(QStringLiteral("MISSING"));
-    REQUIRE(scene.measurementAnnotations().size() == 1);
+    REQUIRE(scene.measurementAnnotations().size() == 4);
     Part other = knownBox(QStringLiteral("OTHER"));
     other.positionX = 200;
     scene.setParts({knownBox(QStringLiteral("KNOWN")), other});
     scene.setSelectedPart(QStringLiteral("KNOWN"));
     scene.setHiddenParts({QStringLiteral("KNOWN")});
-    REQUIRE(scene.measurementAnnotations().size() == 1);
+    REQUIRE(scene.measurementAnnotations().size() == 4);
 
     Part cylinder;
     cylinder.id = QStringLiteral("CYLINDER");
@@ -203,6 +203,8 @@ int main(int argc, char **argv)
     app.processEvents();
     REQUIRE(capture(scene, canvas).save(destination.filePath(QStringLiteral("r07-cylinder.png"))));
     // R07-01：相同比例的圆柱归一化后必须真正画成相同模型；仅包络数值通过不足以发现径向失真。
+    // 毫米网格步长会随真实尺寸改变；该像素对照只比较归一化几何，关闭网格叠层。
+    scene.setGridVisible(false);
     // 裁掉左上尺寸文字和底部标尺，保留实际模型与轴线像素，避免不同毫米数量影响比较。
     Part proportionalCylinder = cylinder;
     proportionalCylinder.radius = 1;

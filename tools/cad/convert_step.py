@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import time
 import uuid
+from fractions import Fraction
 
 sys.dont_write_bytecode = True
 MAX_INPUT = 100 * 1024 * 1024
@@ -47,6 +48,31 @@ def finite(values):
     if not all(math.isfinite(value) for value in values):
         raise ConversionError("NONFINITE_GEOMETRY")
     return values
+
+
+def zero_area_triangle(a, b, c):
+    """仅排除输出double坐标上严格零面积；不以几何epsilon删小曲面。"""
+    if a == b or b == c or c == a:
+        return True
+    # 与正式MeshGeometryCodec::validate逐操作相同，确保剩余输出可通过严格double面积检查。
+    scale = max(abs(value) for point in (a, b, c) for value in point)
+    if scale == 0:
+        return True
+    u = [b[i] / scale - a[i] / scale for i in range(3)]
+    v = [c[i] / scale - a[i] / scale for i in range(3)]
+    cross = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
+    if any(value != 0 for value in cross):
+        return False
+    # 极端范围可能让double叉乘下溢为零；精确有理运算区分真零和丢失精度，后者拒绝而非删除。
+    exact_a, exact_b, exact_c = [[Fraction.from_float(value) for value in point] for point in (a, b, c)]
+    exact_u = [exact_b[i] - exact_a[i] for i in range(3)]
+    exact_v = [exact_c[i] - exact_a[i] for i in range(3)]
+    exact_cross = (exact_u[1] * exact_v[2] - exact_u[2] * exact_v[1],
+                   exact_u[2] * exact_v[0] - exact_u[0] * exact_v[2],
+                   exact_u[0] * exact_v[1] - exact_u[1] * exact_v[0])
+    if any(value != 0 for value in exact_cross):
+        raise ConversionError("TRIANGLE_PRECISION")
+    return True
 
 
 def load_kernel(modules):
@@ -242,7 +268,8 @@ def triangulate(solid, name, number, kernel, counts, started):
             raise ConversionError("MESH_FAILED")
         nodes = triangulation.NbNodes()
         faces = triangulation.NbTriangles()
-        if counts[0] + nodes > MAX_VERTICES or counts[1] + faces > MAX_TRIANGLES:
+        # 原始剖分（三角含零面积）仍计入资源预算，不能通过过滤绕过上限。
+        if counts[0] + nodes > MAX_VERTICES or counts[1] + counts[2] + faces > MAX_TRIANGLES:
             raise ConversionError("MESH_LIMIT")
         transform = location.Transformation()
         offset = len(vertices)
@@ -252,15 +279,26 @@ def triangulate(solid, name, number, kernel, counts, started):
         reversed_face = face.Orientation() == kernel["TopAbs_REVERSED"]
         # 镜像placement同样改变手性，不能只按face方向处理三角绕序。
         reverse = reversed_face != transform.IsNegative()
+        kept = 0
         for index in range(1, faces + 1):
+            if index % 4096 == 0:
+                check_deadline(started)
             indices = list(triangulation.Triangle(index).Get())
-            if any(type(value) is not int or value < 1 or value > nodes for value in indices):
+            if len(indices) != 3 or any(type(value) is not int or value < 1 or value > nodes for value in indices):
                 raise ConversionError("INVALID_TRIANGLES")
             if reverse:
                 indices[1], indices[2] = indices[2], indices[1]
-            triangles.append([offset + value - 1 for value in indices])
+            local_indices = [offset + value - 1 for value in indices]
+            if zero_area_triangle(*(vertices[value] for value in local_indices)):
+                counts[2] += 1
+                continue
+            triangles.append(local_indices)
+            kept += 1
+        # 每个原Face至少仍有非零三角；不允许过滤变成静默丢面或丢实体。
+        if kept == 0:
+            raise ConversionError("DEGENERATE_FACE")
         counts[0] += nodes
-        counts[1] += faces
+        counts[1] += kept
         explorer.Next()
     if not triangles:
         raise ConversionError("MESH_FAILED")
@@ -327,7 +365,7 @@ def convert(input_file, output_file, modules):
     source_hash = hash_source(input_file)
     kernel = load_kernel(modules)
     solids = read_solids(input_file, kernel, started)
-    counts = [0, 0]
+    counts = [0, 0, 0]  # vertices、输出triangles、明确审计的零面积triangles。
     parts = [triangulate(solid, name, index, kernel, counts, started)
              for index, (solid, name) in enumerate(solids, 1)]
     check_deadline(started)
@@ -355,7 +393,8 @@ def main():
             soft_cap = cap if soft == resource.RLIM_INFINITY else min(soft, cap)
             resource.setrlimit(resource.RLIMIT_AS, (soft_cap, cap))
         counts, parts = convert(Path(args.input), Path(args.output), Path(args.modules))
-        print("CAD_CONVERT_OK parts=%d vertices=%d triangles=%d" % (parts, counts[0], counts[1]), flush=True)
+        print("CAD_CONVERT_OK parts=%d vertices=%d triangles=%d filteredZeroArea=%d" %
+              (parts, counts[0], counts[1], counts[2]), flush=True)
         return 0
     except ConversionError as error:
         print("CAD_CONVERT_FAILED " + error.code, file=sys.stderr, flush=True)

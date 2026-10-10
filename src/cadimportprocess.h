@@ -21,6 +21,8 @@ public:
         std::function<bool()> allowJobQuery;
         /** 仅用于受控故障测试：返回false制造本对象Job终止失败，不提供Job/PID。 */
         std::function<bool()> allowJobTermination;
+        /** 仅受控退出竞态测试：成员复核前通知，不传Job/PID；不得重入或销毁拥有者。 */
+        std::function<void()> beforeJobMemberRecheck;
         /** 从显式环境变量或应用旁cad-runtime读取运行路径。 */
         static Config runtime();
     };
@@ -44,6 +46,8 @@ public:
     bool isConfined() const;
     /** 返回最近启动或取消错误，不包含输入内容。 */
     QString lastError() const;
+    /** 本次Job退出诊断副本：PID、计数、成员映像/父PID、创建标志及退出状态，不含输入/命令行/凭证。 */
+    QString jobExitDiagnostic() const;
 
 private:
     struct State;

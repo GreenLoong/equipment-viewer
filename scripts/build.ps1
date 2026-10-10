@@ -2,12 +2,18 @@
     [string]$QtRoot = 'D:\Qt\6.11.1\mingw_64',
     [string]$MinGWBin = 'D:\Qt\Tools\mingw1310_64\bin',
     [string]$CMake = 'D:\Qt\Tools\CMake_64\bin\cmake.exe',
-    [string]$Ninja = 'D:\Qt\Tools\Ninja\ninja.exe'
+    [string]$Ninja = 'D:\Qt\Tools\Ninja\ninja.exe',
+    [string]$BuildDirectory = 'build-1.1'
 )
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$buildDir = Join-Path $projectRoot 'build'
+if ([string]::IsNullOrWhiteSpace($BuildDirectory)) { throw '构建目录不能为空。' }
+$buildDir = [System.IO.Path]::GetFullPath($(if ([System.IO.Path]::IsPathRooted($BuildDirectory)) { $BuildDirectory } else { Join-Path $projectRoot $BuildDirectory }))
+$projectBoundary = [System.IO.Path]::GetFullPath($projectRoot).TrimEnd('\') + '\'
+if (-not $buildDir.StartsWith($projectBoundary, [System.StringComparison]::OrdinalIgnoreCase)) { throw '构建目录必须位于当前工程的独立子目录，不能使用工程根目录或外部目录。' }
+$firstSegment = $buildDir.Substring($projectBoundary.Length).Split('\')[0]
+if ($firstSegment -in @('src','tests','samples','docs','scripts','tools','api','.git','data','.recovery')) { throw '构建目录不能指向源码、资料或版本管理目录。' }
 $qtBin = Join-Path $QtRoot 'bin'
 $compiler = Join-Path $MinGWBin 'g++.exe'
 $deployTool = Join-Path $qtBin 'windeployqt.exe'

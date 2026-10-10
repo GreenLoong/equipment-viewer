@@ -24,6 +24,17 @@
 #include <QVBoxLayout>
 #include <QFileInfo>
 #include <QCloseEvent>
+#include <QCheckBox>
+#include <QColorDialog>
+#include <QGridLayout>
+#include <QSlider>
+#include <QIcon>
+#include <QPixmap>
+#include <QHash>
+#include <QPalette>
+#include <iomanip>
+#include <sstream>
+#include <locale>
 
 namespace {
 QLabel *addValue(QFormLayout *layout, const QString &caption, const QString &objectName, QWidget *parent)
@@ -38,6 +49,13 @@ QLabel *addValue(QFormLayout *layout, const QString &caption, const QString &obj
 }
 
 QString number(double value) { return QString::number(value, 'g', 15); }
+QString extendedNumber(long double value)
+{
+    std::ostringstream stream;
+    stream.imbue(std::locale::classic());
+    stream << std::setprecision(15) << value;
+    return QString::fromStdString(stream.str());
+}
 QString dimension(const std::optional<double> &value) { return value ? number(*value) : QString(); }
 constexpr qint64 maximumFileSize = 5 * 1024 * 1024;
 }
@@ -49,8 +67,8 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
       prompt_(new QLabel(QStringLiteral("请选择零件"), this)), propertyDetails_(new QWidget(this)),
       count_(new QLabel(this)), status_(new QLabel(this)), cadImport_(new CadImportProcess(this))
 {
-    setWindowTitle(QStringLiteral("开目业务模拟 · 设备模型查看器"));
-    resize(1320, 820);
+    setWindowTitle(QStringLiteral("开目业务模拟 · 设备模型查看器 1.1.0"));
+    resize(1440, 900);
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(18, 16, 18, 16);
     layout->setSpacing(10);
@@ -106,12 +124,13 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     count_->setText(QStringLiteral("设备尚未加载"));
     listLayout->addWidget(count_);
 
-    auto *sceneGroup = new QGroupBox(QStringLiteral("三维布局"), body);
+    auto *sceneGroup = new QGroupBox(QStringLiteral("装配工作台 · 原生三维"), body);
     auto *sceneLayout = new QVBoxLayout(sceneGroup);
+    createAssemblyControls(sceneLayout, sceneGroup);
     auto *sceneToolbar = new QHBoxLayout;
     hideButton_ = new QPushButton(QStringLiteral("隐藏选中"), sceneGroup);
     hideButton_->setObjectName(QStringLiteral("hideSelectedButton"));
-    isolateButton_ = new QPushButton(QStringLiteral("隔离查看"), sceneGroup);
+    isolateButton_ = new QPushButton(QStringLiteral("单件展示"), sceneGroup);
     isolateButton_->setObjectName(QStringLiteral("isolateSelectedButton"));
     auto *showAllButton = new QPushButton(QStringLiteral("显示全部"), sceneGroup);
     showAllButton->setObjectName(QStringLiteral("showAllButton"));
@@ -121,9 +140,15 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     for (auto *button : {hideButton_, isolateButton_, showAllButton, fitButton})
         sceneToolbar->addWidget(button);
     sceneLayout->addLayout(sceneToolbar);
+    auto *fitVisibleButton = new QPushButton(QStringLiteral("适配全部"), sceneGroup);
+    fitVisibleButton->setObjectName(QStringLiteral("fitVisibleButton"));
+    sceneToolbar->addWidget(fitVisibleButton);
+    focusButton_ = new QPushButton(QStringLiteral("聚焦选中"), sceneGroup);
+    focusButton_->setObjectName(QStringLiteral("focusSelectedButton"));
+    sceneToolbar->addWidget(focusButton_);
     scene_->setObjectName(QStringLiteral("sceneView"));
     sceneLayout->addWidget(scene_, 1);
-    auto *hint = new QLabel(QStringLiteral("拖动旋转 · 滚轮缩放 · 点击模型选择零件"), sceneGroup);
+    auto *hint = new QLabel(QStringLiteral("拖动旋转 · 滚轮缩放 · 短点选中 · 双击空白只清选择，保留单件展示\n单位mm / Z向上；展开与拉远只改变显示位置，不验证机械运动或碰撞约束。"), sceneGroup);
     hint->setWordWrap(true);
     hint->setStyleSheet(QStringLiteral("color: #52677b;"));
     sceneLayout->addWidget(hint);
@@ -145,13 +170,21 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     shape_ = addValue(basicLayout, QStringLiteral("形状"), QStringLiteral("shape"), propertyDetails_);
     cadSource_ = addValue(basicLayout, QStringLiteral("CAD来源 / SHA256"), QStringLiteral("cadSource"), propertyDetails_);
     detailsLayout->addLayout(basicLayout);
-    auto *positionGroup = new QGroupBox(QStringLiteral("中心位置（毫米）"), propertyDetails_);
+    auto *positionGroup = new QGroupBox(QStringLiteral("原始中心位置（毫米）"), propertyDetails_);
     positionGroup->setObjectName(QStringLiteral("positionGroup"));
     auto *positionLayout = new QFormLayout(positionGroup);
     positionX_ = addValue(positionLayout, QStringLiteral("X"), QStringLiteral("positionX"), positionGroup);
     positionY_ = addValue(positionLayout, QStringLiteral("Y"), QStringLiteral("positionY"), positionGroup);
     positionZ_ = addValue(positionLayout, QStringLiteral("Z"), QStringLiteral("positionZ"), positionGroup);
     detailsLayout->addWidget(positionGroup);
+    auto *displayPositionGroup = new QGroupBox(QStringLiteral("当前显示位置（毫米，不保存到资料）"), propertyDetails_);
+    displayPositionGroup->setObjectName(QStringLiteral("displayPositionGroup"));
+    auto *displayPositionLayout = new QFormLayout(displayPositionGroup);
+    displayPositionX_ = addValue(displayPositionLayout, QStringLiteral("X"), QStringLiteral("displayPositionX"), displayPositionGroup);
+    displayPositionY_ = addValue(displayPositionLayout, QStringLiteral("Y"), QStringLiteral("displayPositionY"), displayPositionGroup);
+    displayPositionZ_ = addValue(displayPositionLayout, QStringLiteral("Z"), QStringLiteral("displayPositionZ"), displayPositionGroup);
+    displayOffset_ = addValue(displayPositionLayout, QStringLiteral("显示偏移XYZ"), QStringLiteral("displayOffset"), displayPositionGroup);
+    detailsLayout->addWidget(displayPositionGroup);
     boxDimensions_ = new QGroupBox(QStringLiteral("长方体尺寸（毫米）"), propertyDetails_);
     boxDimensions_->setObjectName(QStringLiteral("boxDimensions"));
     auto *boxLayout = new QFormLayout(boxDimensions_);
@@ -179,30 +212,9 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     status_->setWordWrap(true);
     layout->addWidget(status_);
     displayProperties();
+    updateAssemblyControls();
 
     connect(partsList_, &QListWidget::itemSelectionChanged, this, &EquipmentWindow::selectFromList);
-    connect(partsList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
-        if (!item || !controller_.isIsolationActive() || !controller_.equipment())
-            return;
-        // 只捕获值；信号中的item由清单拥有，重建后立即失效。
-        const QString id = item->data(Qt::UserRole).toString();
-        const QString equipmentId = controller_.equipment()->id;
-        if (id.isEmpty() || !controller_.selectPart(id) || !controller_.isolateSelected()) {
-            showStatus(controller_.lastError(), true);
-            return;
-        }
-        displayProperties();
-        syncScene();
-        showStatus(QStringLiteral("隔离已切换到零件 %1。").arg(id));
-        // 等本次Qt双击事件返回后再删除/创建清单项，避免发信号栈中释放item。
-        QTimer::singleShot(0, this, [this, equipmentId] {
-            if (!controller_.equipment() || controller_.equipment()->id != equipmentId)
-                return;
-            rebuildList();
-            displayProperties();
-            syncScene();
-        });
-    });
     connect(clearSelectionButton_, &QPushButton::clicked, this, &EquipmentWindow::clearSelection);
     // 窗口快捷键覆盖各控件焦点，只清选择，不修改搜索或显隐。
     auto *escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
@@ -244,16 +256,23 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
         }
         rebuildList();
         syncScene();
+        scene_->focusVisible();
         showStatus(QStringLiteral("当前仅显示选中零件，点击“显示全部”恢复。"));
     });
     connect(showAllButton, &QPushButton::clicked, this, [this] {
         controller_.showAll();
         rebuildList();
         syncScene();
+        scene_->focusVisible();
         showStatus(QStringLiteral("全部零件已恢复显示。"));
     });
     connect(fitButton, &QPushButton::clicked, this, [this] { scene_->fitAll(); });
+    connect(fitVisibleButton, &QPushButton::clicked, this, [this] { scene_->focusVisible(); });
+    connect(focusButton_, &QPushButton::clicked, this, [this] {
+        if (!scene_->focusSelected()) showStatus(QStringLiteral("请先选择一个可见零件。"), true);
+    });
     scene_->onPartPicked = [this](const QString &id) {
+        const QString previousIsolation = controller_.isolatedPartId();
         // 模型拾取优先；目标被过滤时清搜索以恢复对应清单高亮。
         const bool listed = [&] {
             for (int row = 0; row < partsList_->count(); ++row) {
@@ -274,8 +293,150 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
         restoreSelection();
         displayProperties();
         syncScene();
+        updateColorSwatches();
+        if (!id.isEmpty() && !previousIsolation.isEmpty() && previousIsolation != controller_.isolatedPartId())
+            scene_->focusVisible();
         showStatus(QString());
     };
+}
+
+void EquipmentWindow::createAssemblyControls(QVBoxLayout *layout, QWidget *parent)
+{
+    auto *viewRow = new QHBoxLayout;
+    viewModeSelector_ = new QComboBox(parent);
+    viewModeSelector_->setObjectName(QStringLiteral("viewModeSelector"));
+    viewModeSelector_->addItem(QStringLiteral("01 彩色装配"), 0);
+    viewModeSelector_->addItem(QStringLiteral("02 工程轴测"), 1);
+    viewModeSelector_->addItem(QStringLiteral("03 二维投影"), 2);
+    viewModeSelector_->addItem(QStringLiteral("04 三视图"), 3);
+    projectionSelector_ = new QComboBox(parent);
+    projectionSelector_->setObjectName(QStringLiteral("projectionSelector"));
+    projectionSelector_->addItem(QStringLiteral("前视 XZ"), int(SceneView::ViewMode::Front));
+    projectionSelector_->addItem(QStringLiteral("俯视 XY"), int(SceneView::ViewMode::Top));
+    projectionSelector_->addItem(QStringLiteral("侧视 YZ"), int(SceneView::ViewMode::Right));
+    projectionSelector_->hide();
+    axisPlacementSelector_ = new QComboBox(parent);
+    axisPlacementSelector_->setObjectName(QStringLiteral("axisPlacementSelector"));
+    axisPlacementSelector_->addItem(QStringLiteral("XYZ 右下角"), int(SceneView::AxisPlacement::Corner));
+    axisPlacementSelector_->addItem(QStringLiteral("XYZ 模型旁"), int(SceneView::AxisPlacement::Model));
+    axisPlacementSelector_->addItem(QStringLiteral("XYZ 同时显示"), int(SceneView::AxisPlacement::Both));
+    axisPlacementSelector_->addItem(QStringLiteral("XYZ 隐藏"), int(SceneView::AxisPlacement::Hidden));
+    dimensionsCheck_ = new QCheckBox(QStringLiteral("包络尺寸"), parent);
+    dimensionsCheck_->setObjectName(QStringLiteral("dimensionsCheck"));
+    dimensionsCheck_->setChecked(false);
+    gridCheck_ = new QCheckBox(QStringLiteral("毫米网格"), parent);
+    gridCheck_->setObjectName(QStringLiteral("gridCheck"));
+    gridCheck_->setChecked(true);
+    viewRow->addWidget(viewModeSelector_); viewRow->addWidget(projectionSelector_);
+    viewRow->addWidget(axisPlacementSelector_); viewRow->addWidget(dimensionsCheck_); viewRow->addWidget(gridCheck_);
+    layout->addLayout(viewRow);
+
+    auto *offsetRows = new QGridLayout;
+    explodeAxisSelector_ = new QComboBox(parent);
+    explodeAxisSelector_->setObjectName(QStringLiteral("explodeAxisSelector"));
+    explodeAxisSelector_->addItem(QStringLiteral("自动装配轴"), int(SceneView::ExplodeAxis::Auto));
+    explodeAxisSelector_->addItem(QStringLiteral("展开 X"), int(SceneView::ExplodeAxis::X));
+    explodeAxisSelector_->addItem(QStringLiteral("展开 Y"), int(SceneView::ExplodeAxis::Y));
+    explodeAxisSelector_->addItem(QStringLiteral("展开 Z"), int(SceneView::ExplodeAxis::Z));
+    explosionSlider_ = new QSlider(Qt::Horizontal, parent);
+    explosionSlider_->setObjectName(QStringLiteral("explosionSlider")); explosionSlider_->setRange(0, 100);
+    explosionValue_ = new QLabel(QStringLiteral("0%"), parent);
+    explosionValue_->setObjectName(QStringLiteral("explosionValue"));
+    auto *restore = new QPushButton(QStringLiteral("整体复原"), parent);
+    restore->setObjectName(QStringLiteral("restoreDisplayButton"));
+    offsetRows->addWidget(explodeAxisSelector_, 0, 0); offsetRows->addWidget(explosionSlider_, 0, 1);
+    offsetRows->addWidget(explosionValue_, 0, 2); offsetRows->addWidget(restore, 0, 3);
+    offsetRows->addWidget(new QLabel(QStringLiteral("选中件单独拉远"), parent), 1, 0);
+    pullSlider_ = new QSlider(Qt::Horizontal, parent);
+    pullSlider_->setObjectName(QStringLiteral("pullSlider")); pullSlider_->setRange(0, 100);
+    pullValue_ = new QLabel(QStringLiteral("0%"), parent); pullValue_->setObjectName(QStringLiteral("pullValue"));
+    partRestoreButton_ = new QPushButton(QStringLiteral("复原单件偏移"), parent);
+    partRestoreButton_->setObjectName(QStringLiteral("restorePartButton"));
+    offsetRows->addWidget(pullSlider_, 1, 1); offsetRows->addWidget(pullValue_, 1, 2); offsetRows->addWidget(partRestoreButton_, 1, 3);
+    offsetRows->setColumnStretch(1, 1);
+    layout->addLayout(offsetRows);
+    auto *colorRow = new QHBoxLayout;
+    pullDirectionSelector_ = new QComboBox(parent);
+    pullDirectionSelector_->setObjectName(QStringLiteral("pullDirectionSelector"));
+    pullDirectionSelector_->addItem(QStringLiteral("重合件备用正向"), 1);
+    pullDirectionSelector_->addItem(QStringLiteral("重合件备用反向"), -1);
+    partColorButton_ = new QPushButton(QStringLiteral("选中件颜色"), parent);
+    partColorButton_->setObjectName(QStringLiteral("partColorButton"));
+    autoColorButton_ = new QPushButton(QStringLiteral("恢复自动配色"), parent);
+    autoColorButton_->setObjectName(QStringLiteral("autoColorButton"));
+    colorRow->addWidget(pullDirectionSelector_); colorRow->addWidget(partColorButton_); colorRow->addWidget(autoColorButton_); colorRow->addStretch();
+    layout->addLayout(colorRow);
+
+    const auto applyView = [this] {
+        const int mode = viewModeSelector_->currentData().toInt();
+        projectionSelector_->setVisible(mode == 2);
+        scene_->setViewMode(mode == 0 ? SceneView::ViewMode::Isometric : mode == 1 ? SceneView::ViewMode::Engineering
+            : mode == 2 ? static_cast<SceneView::ViewMode>(projectionSelector_->currentData().toInt()) : SceneView::ViewMode::ThreeViews);
+    };
+    connect(viewModeSelector_, &QComboBox::currentIndexChanged, this, [applyView](int) { applyView(); });
+    connect(projectionSelector_, &QComboBox::currentIndexChanged, this, [applyView](int) { applyView(); });
+    connect(axisPlacementSelector_, &QComboBox::currentIndexChanged, this, [this](int) { scene_->setAxisPlacement(static_cast<SceneView::AxisPlacement>(axisPlacementSelector_->currentData().toInt())); });
+    connect(dimensionsCheck_, &QCheckBox::toggled, this, [this](bool visible) { scene_->setDimensionsVisible(visible); });
+    connect(gridCheck_, &QCheckBox::toggled, this, [this](bool visible) { scene_->setGridVisible(visible); });
+    connect(explodeAxisSelector_, &QComboBox::currentIndexChanged, this, [this](int) { scene_->setExplodeAxis(static_cast<SceneView::ExplodeAxis>(explodeAxisSelector_->currentData().toInt())); scene_->focusVisible(); displayProperties(); showAssemblyStatus(QStringLiteral("展开轴已切换")); });
+    connect(explosionSlider_, &QSlider::valueChanged, this, [this](int value) {
+        if (scene_->setExplosionFraction(value / 100.0)) { updateAssemblyControls(); displayProperties(); scene_->focusVisible(); showAssemblyStatus(QStringLiteral("整体有序向外展开")); }
+    });
+    connect(pullSlider_, &QSlider::valueChanged, this, [this](int value) {
+        if (scene_->setPullFraction(value / 100.0)) { updateAssemblyControls(); displayProperties(); scene_->focusVisible(); showAssemblyStatus(QStringLiteral("选中件单独拉远")); }
+    });
+    connect(pullDirectionSelector_, &QComboBox::currentIndexChanged, this, [this](int) { scene_->setPullDirection(pullDirectionSelector_->currentData().toInt()); displayProperties(); scene_->focusVisible(); showAssemblyStatus(QStringLiteral("重合件备用方向已切换")); });
+    connect(restore, &QPushButton::clicked, this, [this] { scene_->restoreDisplayOffsets(); updateAssemblyControls(); displayProperties(); scene_->focusVisible(); showAssemblyStatus(QStringLiteral("整体与单件显示偏移已复原")); });
+    connect(partRestoreButton_, &QPushButton::clicked, this, [this] { scene_->setPullFraction(0); updateAssemblyControls(); displayProperties(); scene_->focusVisible(); showAssemblyStatus(QStringLiteral("单件偏移已复原，其他零件不变")); });
+    connect(partColorButton_, &QPushButton::clicked, this, [this] {
+        const QString id = controller_.selectedPartId();
+        const QString equipment = controller_.equipment() ? controller_.equipment()->id : QString();
+        if (id.isEmpty()) return;
+        const QColor color = QColorDialog::getColor(scene_->partColor(id), this, QStringLiteral("选中零件演示配色"));
+        if (!color.isValid() || !controller_.equipment() || equipment != controller_.equipment()->id) return;
+        if (scene_->setPartColor(id, color)) { updateColorSwatches(); updateAssemblyControls(); }
+    });
+    connect(autoColorButton_, &QPushButton::clicked, this, [this] { if (scene_->resetPartColor(controller_.selectedPartId())) { updateColorSwatches(); updateAssemblyControls(); } });
+}
+
+void EquipmentWindow::updateAssemblyControls()
+{
+    const QSignalBlocker explosionBlock(explosionSlider_), pullBlock(pullSlider_);
+    explosionSlider_->setValue(qRound(scene_->explosionFraction() * 100));
+    pullSlider_->setValue(qRound(scene_->pullFraction() * 100));
+    explosionValue_->setText(QStringLiteral("%1%").arg(explosionSlider_->value()));
+    pullValue_->setText(QStringLiteral("%1%").arg(pullSlider_->value()));
+    const bool selected = controller_.selectedPart() != nullptr;
+    pullSlider_->setEnabled(selected); partRestoreButton_->setEnabled(selected); pullDirectionSelector_->setEnabled(selected);
+    partColorButton_->setEnabled(selected); autoColorButton_->setEnabled(selected);
+    focusButton_->setEnabled(selected && !controller_.hiddenPartIds().contains(controller_.selectedPartId()));
+    partColorButton_->setStyleSheet(selected ? QStringLiteral("border-left: 12px solid %1;").arg(scene_->partColor(controller_.selectedPartId()).name()) : QString());
+}
+
+void EquipmentWindow::updateColorSwatches()
+{
+    QHash<QString, const Part *> parts;
+    for (const Part &part : controller_.parts()) parts.insert(part.id, &part);
+    for (int row = 0; row < partsList_->count(); ++row) {
+        auto *item = partsList_->item(row); QPixmap swatch(16, 16);
+        const QString id = item->data(Qt::UserRole).toString();
+        swatch.fill(scene_->partColor(id)); item->setIcon(QIcon(swatch));
+        const Part *part = parts.value(id);
+        if (!part) continue;
+        const bool hidden = controller_.hiddenPartIds().contains(id);
+        item->setText(QStringLiteral("%1 (%2)%3").arg(part->name, id, hidden ? QStringLiteral(" · 已隐藏") : QString()));
+        item->setForeground(hidden ? QColor(QStringLiteral("#778899")) : palette().color(QPalette::Text));
+        QFont font = item->font(); font.setItalic(hidden); item->setFont(font);
+    }
+}
+
+void EquipmentWindow::showAssemblyStatus(const QString &action)
+{
+    const Part *part = controller_.selectedPart();
+    showStatus(part ? QStringLiteral("%1 · %2 · %3；源位置和尺寸不写回资料。")
+        .arg(action, part->name, controller_.isIsolationActive() ? QStringLiteral("单件展示") : QStringLiteral("整机展示"))
+        : QStringLiteral("%1 · %2；源位置和尺寸不写回资料。")
+        .arg(action, controller_.isIsolationActive() ? QStringLiteral("单件展示（未选中）") : QStringLiteral("整机展示")));
 }
 
 EquipmentWindow::~EquipmentWindow()
@@ -374,9 +535,18 @@ void EquipmentWindow::displayLoadedEquipment()
     equipmentId_->setText(QStringLiteral("设备 ID：%1").arg(controller_.equipment()->id));
     const QSignalBlocker blocker(search_);
     search_->clear();
-    rebuildList();
-    displayProperties();
     scene_->setParts(controller_.parts());
+    {
+        const QSignalBlocker viewBlock(viewModeSelector_), projectionBlock(projectionSelector_), axisBlock(axisPlacementSelector_),
+            explodeAxisBlock(explodeAxisSelector_), directionBlock(pullDirectionSelector_), dimensionsBlock(dimensionsCheck_), gridBlock(gridCheck_);
+        viewModeSelector_->setCurrentIndex(0); projectionSelector_->setCurrentIndex(0); projectionSelector_->hide();
+        axisPlacementSelector_->setCurrentIndex(0); explodeAxisSelector_->setCurrentIndex(0); pullDirectionSelector_->setCurrentIndex(0);
+        dimensionsCheck_->setChecked(false); gridCheck_->setChecked(true);
+    }
+    scene_->setViewMode(SceneView::ViewMode::Isometric); scene_->setAxisPlacement(SceneView::AxisPlacement::Corner);
+    scene_->setDimensionsVisible(false); scene_->setGridVisible(true); scene_->setExplodeAxis(SceneView::ExplodeAxis::Auto);
+    scene_->setPullDirection(1); scene_->restoreDisplayOffsets();
+    rebuildList();
     syncScene();
 }
 
@@ -467,19 +637,23 @@ void EquipmentWindow::rebuildList()
     count_->setText(term.isEmpty()
         ? QStringLiteral("%1 个零件").arg(controller_.parts().size())
         : QStringLiteral("显示 %1 / %2 个零件").arg(partsList_->count()).arg(controller_.parts().size()));
+    updateColorSwatches();
 }
 
 void EquipmentWindow::selectFromList()
 {
     const auto selected = partsList_->selectedItems();
     const QString id = selected.isEmpty() ? QString() : selected.first()->data(Qt::UserRole).toString();
+    const QString previousIsolation = controller_.isolatedPartId();
     if (!controller_.selectPart(id)) {
         showStatus(controller_.lastError(), true);
         restoreSelection();
         return;
     }
-    displayProperties();
     syncScene();
+    updateColorSwatches();
+    if (!id.isEmpty() && !previousIsolation.isEmpty() && previousIsolation != controller_.isolatedPartId())
+        scene_->focusVisible();
     showStatus(QString());
 }
 
@@ -510,23 +684,26 @@ void EquipmentWindow::syncScene()
 {
     scene_->setSelectedPart(controller_.selectedPartId());
     scene_->setHiddenParts(controller_.hiddenPartIds());
+    updateAssemblyControls();
+    displayProperties();
 }
 
 void EquipmentWindow::displayProperties()
 {
     // 同时清空被隐藏的字段，保证形状切换和清除选择不会残留旧资料。
     for (QLabel *label : {partId_, partName_, material_, shape_, positionX_, positionY_, positionZ_,
-                         sizeX_, sizeY_, sizeZ_, radius_, length_, cadSource_})
+                         sizeX_, sizeY_, sizeZ_, radius_, length_, cadSource_, displayPositionX_, displayPositionY_, displayPositionZ_, displayOffset_})
         label->clear();
     boxDimensions_->hide();
     cylinderDimensions_->hide();
     boxDimensions_->setTitle(QStringLiteral("长方体尺寸（毫米）"));
     auto *positionGroup = findChild<QGroupBox *>(QStringLiteral("positionGroup"));
-    positionGroup->setTitle(QStringLiteral("中心位置（毫米）"));
+    positionGroup->setTitle(QStringLiteral("原始中心位置（毫米）"));
     cadSource_->hide();
     cadSource_->setToolTip(QString());
     const Part *part = controller_.selectedPart();
     prompt_->setVisible(!part);
+    prompt_->setText(controller_.isIsolationActive() ? QStringLiteral("未选中；仍为单件展示，显示全部退出隔离") : QStringLiteral("请选择零件"));
     propertyDetails_->setVisible(part != nullptr);
     hideButton_->setEnabled(part != nullptr);
     isolateButton_->setEnabled(part != nullptr);
@@ -538,12 +715,17 @@ void EquipmentWindow::displayProperties()
     positionX_->setText(number(part->positionX));
     positionY_->setText(number(part->positionY));
     positionZ_->setText(number(part->positionZ));
+    const auto offset = scene_->displayOffset(part->id);
+    displayPositionX_->setText(extendedNumber(static_cast<long double>(part->positionX) + offset[0]));
+    displayPositionY_->setText(extendedNumber(static_cast<long double>(part->positionY) + offset[1]));
+    displayPositionZ_->setText(extendedNumber(static_cast<long double>(part->positionZ) + offset[2]));
+    displayOffset_->setText(QStringLiteral("%1 / %2 / %3 mm").arg(extendedNumber(offset[0]), extendedNumber(offset[1]), extendedNumber(offset[2])));
     if (part->shape == QStringLiteral("box") || part->shape == QStringLiteral("mesh")) {
         const bool mesh = part->shape == QStringLiteral("mesh");
         shape_->setText(mesh ? QStringLiteral("CAD曲面网格") : QStringLiteral("长方体"));
         if (mesh) {
             boxDimensions_->setTitle(QStringLiteral("全局XYZ外包络（毫米，非制造标注）"));
-            positionGroup->setTitle(QStringLiteral("全局外包络中心（毫米）"));
+            positionGroup->setTitle(QStringLiteral("原始全局外包络中心（毫米）"));
             cadSource_->setText(QStringLiteral("%1\nSHA256: %2…")
                 .arg(part->cadSourceName, part->cadSourceSha256.left(16)));
             cadSource_->setToolTip(part->cadSourceSha256);

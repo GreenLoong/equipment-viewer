@@ -83,6 +83,13 @@ bool successAndRepository()
     CHECK(!process.start(fixture.input, {}));
     CHECK(controller.equipment()->id == "old");
     CHECK(until([&] { return finished; }));
+    if (!(error.isEmpty() && bytes == protocol() && !process.isBusy() && process.processId() == 0)) {
+        // 只记录失败时的真实进程/回调状态，保留原断言且不自动重试偶发失败。
+        QTextStream(stderr) << "CAD_SUCCESS_DIAGNOSTIC error='" << error
+            << "' bytes=" << bytes.size() << " expectedBytes=" << protocol().size()
+            << " busy=" << process.isBusy() << " pid=" << process.processId()
+            << " job='" << process.jobExitDiagnostic() << "'" << Qt::endl;
+    }
     CHECK(error.isEmpty() && bytes == protocol() && !process.isBusy() && process.processId() == 0);
     CHECK(controller.importCadResult(bytes));
     CHECK(controller.parts().size() == 1 && controller.parts().first().mesh
@@ -170,21 +177,23 @@ bool cancelTimeoutAndOwner()
     bool deleted = false;
     bool notified = false;
     QString destructionError;
+    QString destructionJob;
     auto selfDeleting = std::make_unique<CadImportProcess>(fixture.config);
     CHECK(selfDeleting->start(fixture.input, [&](QByteArray bytes, QString error) {
-        notified = true; destructionError = error;
+        notified = true; destructionError = error; destructionJob = selfDeleting->jobExitDiagnostic();
         deleted = !bytes.isEmpty() && error.isEmpty(); selfDeleting.reset();
     }));
     const bool completedNotification = until([&] { return notified; });
     if (!deleted) QTextStream(stderr) << "Self destruction result: " << destructionError
-        << "; pending=" << (selfDeleting ? selfDeleting->lastError() : QStringLiteral("owner destroyed")) << Qt::endl;
+        << "; pending=" << (selfDeleting ? selfDeleting->lastError() : QStringLiteral("owner destroyed"))
+        << "; job=" << destructionJob << Qt::endl;
     CHECK(completedNotification && deleted); CHECK(!selfDeleting);
     CadImportProcess reusable(fixture.config); int completed = 0;
     CHECK(reusable.start(fixture.input, [&](QByteArray, QString) {
         ++completed;
         if (!reusable.start(fixture.input, [&](QByteArray bytes, QString error) {
             if (!bytes.isEmpty() && error.isEmpty()) ++completed;
-            else QTextStream(stderr) << "Reuse result: " << error << Qt::endl;
+            else QTextStream(stderr) << "Reuse result: " << error << "; job=" << reusable.jobExitDiagnostic() << Qt::endl;
         })) completed = -1;
     }));
     const bool reused = until([&] { return completed >= 2 || completed < 0; });
@@ -340,6 +349,81 @@ bool wholeTreeExitBoundary()
     return true;
 }
 
+bool historicalChildExitIsNotLiveChild()
+{
+#ifdef Q_OS_WIN
+    Fixture fixture;
+    // 真实后台子进程已退出并由主转换器wait；CREATE_NO_WINDOW避免另外创建未由wait覆盖的系统控制台宿主。
+    // Job历史Total>1仍应成功；每轮首败即停，不是失败重试，其余真实活child门禁fixture保持原样。
+    CHECK(fixture.initialize("child=subprocess.Popen([sys.executable,'-I','-c','pass'],"
+        "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=subprocess.CREATE_NO_WINDOW)\n"
+        "assert child.wait()==0,'historical child failed'\n" + fixture.resultCode()));
+    for (int cycle = 0; cycle < 8; ++cycle) {
+        CadImportProcess process(fixture.config);
+        QByteArray result; QString error; bool finished = false;
+        CHECK(process.start(fixture.input, [&](QByteArray bytes, QString message) {
+            result = std::move(bytes); error = message; finished = true;
+        }));
+        CHECK(until([&] { return finished; }));
+        if (!error.isEmpty() || result != protocol())
+            QTextStream(stderr) << "HISTORICAL_CHILD_EXIT cycle=" << cycle << " error=" << error
+                << " bytes=" << result.size() << " job=" << process.jobExitDiagnostic() << Qt::endl;
+        CHECK(error.isEmpty() && result == protocol() && !process.isBusy() && process.processId() == 0);
+        CHECK(process.jobExitDiagnostic().contains(QStringLiteral("active=0"))
+              || process.jobExitDiagnostic().contains(QStringLiteral("confirmedActive=0")));
+    }
+    QTextStream(stdout) << "HISTORICAL_CHILD_EXIT independentRuns=8 exitedChildAccepted=1 activeZeroGate=1" << Qt::endl;
+#endif
+    return true;
+}
+
+bool memberExitsDuringProbe()
+{
+#ifdef Q_OS_WIN
+    Fixture fixture;
+    const QByteArray childCode = "import os,pathlib,sys,time\n"
+        "marker=pathlib.Path(sys.argv[1])\npathlib.Path(sys.argv[2]).write_text(str(os.getpid()))\n"
+        "while not marker.exists(): time.sleep(0.005)\n";
+    const QByteArray encodedChild = QJsonDocument(QJsonArray{QString::fromUtf8(childCode)}).toJson(QJsonDocument::Compact).mid(1).chopped(1);
+    CHECK(fixture.initialize(fixture.resultCode()
+        + "child=subprocess.Popen([sys.executable,'-I','-c'," + encodedChild
+        + ",a.input+'.allow-exit',a.input+'.race-child'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=subprocess.CREATE_NO_WINDOW)\n"
+        "while not pathlib.Path(a.input+'.release-parent').exists(): time.sleep(0.005)\n"));
+    struct OwnedHandle {
+        HANDLE value = nullptr;
+        void close() { if (value) { CloseHandle(value); value = nullptr; } }
+        ~OwnedHandle() { close(); }
+    } child;
+    bool recheckEntered = false, exitAcknowledged = false;
+    fixture.config.beforeJobMemberRecheck = [&] {
+        if (recheckEntered) return;
+        recheckEntered = true;
+        // 在第一次活判之后让真实owned child退出；不注入假Accounting/PID/退出结果。
+        if (write(fixture.input + ".allow-exit", "exit")) exitAcknowledged = WaitForSingleObject(child.value, 1000) == WAIT_OBJECT_0;
+        child.close();
+    };
+    CadImportProcess process(fixture.config);
+    QByteArray bytes; QString error; bool finished = false;
+    CHECK(process.start(fixture.input, [&](QByteArray result, QString message) {
+        bytes = std::move(result); error = message; finished = true;
+    }));
+    CHECK(until([&] { return QFileInfo::exists(fixture.input + ".race-child"); }));
+    QFile pid(fixture.input + ".race-child"); CHECK(pid.open(QIODevice::ReadOnly));
+    child.value = OpenProcess(SYNCHRONIZE, FALSE, pid.readAll().toUInt()); pid.close();
+    CHECK(child.value != nullptr);
+    CHECK(write(fixture.input + ".release-parent", "finish"));
+    const bool notified = until([&] { return finished; });
+    child.close();
+    if (!notified || !error.isEmpty()) QTextStream(stderr) << "MEMBER_EXIT_RACE error=" << error << " job=" << process.jobExitDiagnostic() << Qt::endl;
+    CHECK(notified && recheckEntered && exitAcknowledged && error.isEmpty() && bytes == protocol());
+    CHECK(!process.isBusy() && process.processId() == 0);
+    CHECK(process.jobExitDiagnostic().contains(QStringLiteral("exitedAfterProbe"))
+          && process.jobExitDiagnostic().contains(QStringLiteral("confirmedActive=0")));
+    QTextStream(stdout) << "MEMBER_EXIT_RACE realChildExitedAfterFirstProbe=1 secondHandleWaitObserved=1 activeZeroGate=1" << Qt::endl;
+#endif
+    return true;
+}
+
 bool actualConversion(const QString &input, int count, const CadImportProcess::Config &config)
 {
     QTemporaryDir temp; CHECK(temp.isValid());
@@ -387,7 +471,7 @@ int main(int argc, char **argv)
         return 2;
     }
     if (!successAndRepository() || !failureCases() || !cancelTimeoutAndOwner()
-        || !wholeTreeExitBoundary() || !windowFlow()) return 1;
+        || !wholeTreeExitBoundary() || !historicalChildExitIsNotLiveChild() || !memberExitsDuringProbe() || !windowFlow()) return 1;
     const QStringList arguments = application.arguments();
     for (const auto &option : {QStringLiteral("--actual-bearing"), QStringLiteral("--actual-motor")}) {
         const int index = arguments.indexOf(option);

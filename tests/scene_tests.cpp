@@ -53,6 +53,9 @@ int main(int argc, char **argv)
     view.setHiddenParts({QStringLiteral("P-001")});
     app.processEvents();
     QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
+    REQUIRE(picked == QStringLiteral("P-001"));
+    QTest::mouseDClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
     REQUIRE(picked.isEmpty());
     const QImage hidden = view.grab().toImage();
     REQUIRE(hidden != normal);
@@ -114,6 +117,8 @@ int main(int argc, char **argv)
     view.setParts({invalid});
     REQUIRE(view.rendererDescription().contains(QStringLiteral("INVALID")));
     QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
+    QTest::mouseDClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, canvas->rect().center());
     REQUIRE(picked.isEmpty());
     view.setParts({});
     REQUIRE(!view.rendererDescription().contains(QStringLiteral("场景错误")));

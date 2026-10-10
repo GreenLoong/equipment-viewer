@@ -1,4 +1,4 @@
-# 设备模型查看器 · 1.0.0
+# 设备模型查看器 · 1.1.0集成中
 
 工业软件工作模拟项目：Qt/C++桌面查看设备和零件，SQLite保存本地资料，HTTP与MySQL提供团队共享库及工艺批注，Redis缓存不可变几何。
 
@@ -15,6 +15,9 @@
 - STEP/STP闭合实体和装配导入，真实曲面/通孔网格、毫米外包络、本地持久化、重启和失败保护；公开轴承与六件电机样例带来源署名。
 
 JSON支持box/cylinder；STEP读取闭合实体，独立开放面/壳/线与混合文件整份拒绝。CAD当前只在本地查看，团队服务明确拒绝CAD发布；制造标注、CAD编辑、IGES和厂商原生格式未实现。显示名用于协作演示，不代表独立登录账号。项目未公开部署。
+
+
+当前正在把用户确认的独立装配Demo移植到原生Qt桌面，branch codex/desktop-assembly-1.1。范围为多视图/坐标轴/有序展开/单件拉远/颜色/边缘尺寸/隔离取消选择；1.0历史包和标签保留，后端API仍兼容1.0。实现与实际验证进度见[1.1记录](docs/releases/1.1.md)，尚未完成技术交付。独立编译用 `scripts/build.ps1 -BuildDirectory build-1.1`，打包用 `scripts/package.ps1 -BuildDirectory build-1.1 -OutputRoot <交付目录>`。
 
 ## 本机快速运行
 

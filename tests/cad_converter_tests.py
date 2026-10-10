@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.dont_write_bytecode = True
 PROJECT = Path(__file__).resolve().parents[1]
@@ -110,6 +111,7 @@ class ConverterTests(unittest.TestCase):
             for triangle in mesh["triangles"]:
                 self.assertEqual(len(triangle), 3)
                 self.assertTrue(all(type(index) is int and 0 <= index < len(mesh["vertices"]) for index in triangle))
+                self.assertFalse(self.module.zero_area_triangle(*(mesh["vertices"][index] for index in triangle)))
             self.assertGreater(signed_volume(mesh), 0, "闭合实体反向面须产生一致向外三角绕序")
 
     def test_real_protocol_names_finite_local_mesh_and_sha(self):
@@ -363,6 +365,71 @@ class ConverterTests(unittest.TestCase):
         self.assertEqual(json.loads(output.read_text(encoding="utf8"))["sourceSha256"], self.bearing["sourceSha256"])
         relative = self.run_conversion(self.bearing_source, self.root / "relative.json", expected=1, modules=Path("."), cwd=self.root)
         self.assertIn("MODULES_UNAVAILABLE", relative.stderr)
+
+
+class ZeroAreaTriangleTests(unittest.TestCase):
+    """受控剖分故障夹具，只验证面积过滤策略，不冒充真实CAD模型。"""
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_converter()
+
+    def fake_kernel(self, faces):
+        class Point:
+            def __init__(self, values): self.values = values
+            def Transformed(self, transform): return self
+            def X(self): return self.values[0]
+            def Y(self): return self.values[1]
+            def Z(self): return self.values[2]
+
+        class Explorer:
+            def __init__(self, solid, kind): self.index = 0
+            def More(self): return self.index < len(faces)
+            def Current(self): return SimpleNamespace(index=self.index, Orientation=lambda: 0)
+            def Next(self): self.index += 1
+
+        def triangulation(face, location):
+            points, triangles = faces[face.index]
+            return SimpleNamespace(NbNodes=lambda: len(points), NbTriangles=lambda: len(triangles),
+                Node=lambda i: Point(points[i - 1]),
+                Triangle=lambda i: SimpleNamespace(Get=lambda: triangles[i - 1]))
+
+        return {"Bnd_Box": lambda: SimpleNamespace(IsVoid=lambda: False, IsOpen=lambda: False, Get=lambda: (-1., -1., -1., 1., 1., 1.)),
+            "BRepBndLib": SimpleNamespace(AddOptimal_s=lambda *args: None),
+            "BRepMesh_IncrementalMesh": lambda *args: SimpleNamespace(IsDone=lambda: True),
+            "TopExp_Explorer": Explorer, "TopAbs_FACE": 1, "TopAbs_REVERSED": 2,
+            "TopoDS": SimpleNamespace(Face_s=lambda face: face),
+            "TopLoc_Location": lambda: SimpleNamespace(Transformation=lambda: SimpleNamespace(IsNegative=lambda: False)),
+            "BRep_Tool": SimpleNamespace(Triangulation_s=triangulation)}
+
+    def test_exact_zero_and_tiny_real_area_have_no_epsilon_cutoff(self):
+        zero = self.module.zero_area_triangle
+        self.assertTrue(zero([0., 0., 0.], [1., 1., 1.], [1., 1., 1.]))
+        self.assertTrue(zero([0., 0., 0.], [1., 2., 3.], [2., 4., 6.]))
+        self.assertFalse(zero([0., 0., 0.], [1., 0., 0.], [0., 1e-200, 0.]))
+        with self.assertRaises(self.module.ConversionError) as failure:
+            zero([1e308, 0., 0.], [1e308, 1., 0.], [1e308, 0., 1.])
+        self.assertEqual(failure.exception.code, "TRIANGLE_PRECISION", "double面积下溢但精确面积非零时必须拒绝，不能删真实小曲面")
+
+    def test_filter_only_zero_triangle_keeps_face_vertices_and_audits_count(self):
+        points = [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 1., 0.]]
+        counts = [0, 0, 0]
+        result = self.module.triangulate(None, "controlled", 1,
+            self.fake_kernel([(points, [(1, 2, 3), (1, 3, 4)])]), counts, self.module.time.monotonic())
+        self.assertEqual(result["mesh"]["vertices"], points)
+        self.assertEqual(result["mesh"]["triangles"], [[0, 1, 2]])
+        self.assertEqual(counts, [4, 1, 1])
+        # 已过滤的三角仍占原始预算，不能靠滤零面积绕过累计400000资源上限。
+        with patch.object(self.module, "MAX_TRIANGLES", 1), self.assertRaises(self.module.ConversionError) as failure:
+            self.module.triangulate(None, "controlled", 1,
+                self.fake_kernel([(points, [(1, 2, 3), (1, 3, 4)])]), [0, 0, 0], self.module.time.monotonic())
+        self.assertEqual(failure.exception.code, "MESH_LIMIT")
+
+    def test_all_zero_face_is_rejected_even_when_other_face_has_real_area(self):
+        zero = ([[0., 0., 0.], [1., 1., 1.], [2., 2., 2.]], [(1, 2, 3)])
+        valid = ([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], [(1, 2, 3)])
+        with self.assertRaises(self.module.ConversionError) as failure:
+            self.module.triangulate(None, "controlled", 1, self.fake_kernel([valid, zero]), [0, 0, 0], self.module.time.monotonic())
+        self.assertEqual(failure.exception.code, "DEGENERATE_FACE", "不能因另一个面有面积就静默丢失零面积面")
 
 
 if __name__ == "__main__":
