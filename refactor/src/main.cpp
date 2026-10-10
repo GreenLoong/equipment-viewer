@@ -8,6 +8,7 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QFileInfo>
+#include <QIcon>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QTemporaryDir>
@@ -19,6 +20,8 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("qt_sqlite_demo"));
     QCoreApplication::setApplicationVersion(QStringLiteral("1.1.1"));
+    // 窗口/任务栏图标随可执行文件一起打包（EXE 文件图标另由 resources/app.rc 嵌入）。
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app.ico")));
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Qt + SQLite 本地记录示例"));
     parser.addHelpOption();
@@ -31,12 +34,18 @@ int main(int argc, char *argv[])
     parser.addOption({QStringLiteral("equipment-check"),
                       QStringLiteral("初始化并输出设备及零件资料，随后退出，不打开窗口")});
     parser.addOption({QStringLiteral("equipment-view"), QStringLiteral("打开 EQ-001 设备查看窗口")});
+    parser.addOption({QStringLiteral("record-view"),
+                      QStringLiteral("打开原记录示例窗口（默认打开设备查看器）")});
     parser.process(app);
 
     const bool smokeTest = parser.isSet(QStringLiteral("smoke-test"));
     const bool equipmentCheck = parser.isSet(QStringLiteral("equipment-check"));
-    const bool equipmentView = parser.isSet(QStringLiteral("equipment-view"));
-    if (equipmentCheck && (smokeTest || equipmentView)) {
+    const bool explicitEquipmentView = parser.isSet(QStringLiteral("equipment-view"));
+    const bool recordView = parser.isSet(QStringLiteral("record-view"));
+    // 打包交付的主入口是设备查看器：未显式要求记录示例时默认打开设备查看器；
+    // --equipment-check 仍走只输出资料的路径，不打开窗口。
+    const bool equipmentView = !equipmentCheck && (explicitEquipmentView || !recordView);
+    if (equipmentCheck && (smokeTest || explicitEquipmentView)) {
         QTextStream(stderr) << "--equipment-check 不能与 --smoke-test 或 --equipment-view 同时使用。" << Qt::endl;
         return 1;
     }

@@ -1,0 +1,3 @@
+// 可执行文件图标：让资源管理器、任务栏与快捷方式显示设备查看器图标。
+// 引用的 app.ico 与本源文件一同复制到构建目录，windres 通过 -I 构建目录解析此相对路径。
+IDI_APPICON ICON DISCARDABLE "app.ico"

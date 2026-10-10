@@ -7,6 +7,7 @@ project(EquipmentViewerRefactor VERSION 1.1.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Sql OpenGL OpenGLWidgets Network)
 
@@ -31,7 +32,16 @@ add_library(equipment_window src/equipmentcontroller.cpp src/equipmentcontroller
 target_link_libraries(equipment_window PUBLIC equipment_importer scene_view Qt6::Widgets Qt6::Network)
 add_library(record_window src/mainwindow.cpp src/mainwindow.h)
 target_link_libraries(record_window PUBLIC record_store Qt6::Widgets)
-qt_add_executable(qt_sqlite_demo src/main.cpp)
+
+# 应用图标：app.qrc 供运行时窗口/任务栏图标使用；Windows 另把 app.rc 与 app.ico
+# 复制到构建目录后由 windres 嵌入，使 EXE 本身在资源管理器中带图标。
+set(EV_APP_SOURCES src/main.cpp resources/app.qrc)
+if(WIN32)
+    configure_file(resources/app.ico "${CMAKE_CURRENT_BINARY_DIR}/app.ico" COPYONLY)
+    configure_file(resources/app.rc "${CMAKE_CURRENT_BINARY_DIR}/app.rc" COPYONLY)
+    list(APPEND EV_APP_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
+endif()
+qt_add_executable(qt_sqlite_demo ${EV_APP_SOURCES})
 target_link_libraries(qt_sqlite_demo PRIVATE record_window equipment_window)
 # 相对路径写法：CMake 会保留在源码树内的相对引用，避免绝对中文路径生成目标文件失败。
 add_executable(environment_probe tools/environment_probe.cpp)
@@ -83,8 +93,9 @@ if(BUILD_TESTING)
     add_test(NAME complete_workflow COMMAND workflow_tests -platform offscreen "${EV_REPO_ROOT}/samples")
     add_test(NAME equipment_application_startup COMMAND qt_sqlite_demo -platform offscreen
         --equipment-view --smoke-test "${CMAKE_BINARY_DIR}/equipment-startup.png")
+    # --record-view 显式指向旧记录窗口：默认入口改为设备查看器后，本项仍验证原记录窗口启动。
     add_test(NAME application_startup COMMAND qt_sqlite_demo -platform offscreen
-        --smoke-test "${CMAKE_BINARY_DIR}/startup.png")
+        --record-view --smoke-test "${CMAKE_BINARY_DIR}/startup.png")
     set_tests_properties(environment records_and_window equipment_persistence equipment_selection
         equipment_import scene_interaction complete_workflow equipment_application_startup
         application_startup PROPERTIES TIMEOUT 90)
