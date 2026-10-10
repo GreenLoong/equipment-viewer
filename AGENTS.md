@@ -1,12 +1,14 @@
 # 项目协作约定
 
-## 正式1.1装配查看集成（2026-10-10，当前优先）
+## 正式1.1装配查看集成（2026-10-10，已交付）
 
 用户明确要求将独立v0.3 Demo合并正式软件，之前仅Demo/不替换限制不再约束此次正式集成。主树新branch codex/desktop-assembly-1.1，自111e8bb干净基线开始；旧1.0标签/包与独立Demo包保留，正常SQLite/MySQL/API不作测试数据目标。
 
 计划原生Qt集成：默认彩色/工程轴测/二维正交/同比例三视图，世界XYZ角落/模型旁/同时/隐藏，网格及默认关闭尺寸边缘读数；沿原包络中心auto/XYZ有序外向展开，选中件可控拉远/复原，稳定自动色与自定义；隔离时双击空白清选中保持隔离，清单双击或换有效件切隔离，显示全部明确退出。原设备/STEP/共享批注继续可用，源参数不能因演示位移写回库。
 
-assembly_state唯一负责SceneView及assembly_scene_tests；assembly_ui负责Window/Controller/main/CMake/窗口回归与82STEP样本；assembly_review只读业务独审+独立模拟用户harness；root负责公共文档/串行构建/实际运行/包/Git。先冻结Scene接口，再并行实现。新文件和变更脚本先读再执行。功能已落盘并构建，当前17/18回归；CAD Job退出时间竞态与82实体33零面积tessellation两个阻断修正中，最新准确恢复信息以working-state顶部为准，尚未发布1.1或真人验收。
+assembly_state唯一负责SceneView及assembly_scene_tests；assembly_ui负责Window/Controller/main/CMake/窗口回归与82STEP样本；assembly_review只读业务独审+独立模拟用户harness；root负责公共文档/串行构建/实际运行/包/Git。先冻结Scene接口，再并行实现。新文件和变更脚本先读再执行。
+
+1.1.0 已交付：源码提交 a5fd782fc48ea4ef8fd095434ea4e906d38b2dc2，分支 codex/desktop-assembly-1.1，标签 v1.1.0，main 同步；包 equipment-viewer-1.1.0-20261010-135556（ZIP SHA256 E01C361420E3140696DAFAF6F695A2EC3030E8533362EE6F6A1740498F411F0E）。验证：全量18项CTest通过32.07秒、转换器17项通过、独立harness原生FBO samples=4、包内运行库真实导入六件电机与82件装配并完成四视图/展开/拉远/清选中保隔离/重启源参数一致，包内EXE原生冒烟通过（临时库）。正常数据库、旧1.0包与旧build未动，升级前备份在 .recovery/databases/20261010-004600-562654。真人满意验收待用户实际体验，自动/模拟结果不得写成真人验收；接手先读 docs/working-state.md 顶部与 docs/releases/1.1.md。
 
 
 ## 当前范围与授权

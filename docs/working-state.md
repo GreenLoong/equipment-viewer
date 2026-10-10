@@ -1,14 +1,14 @@
 # 当前工作状态与中断恢复入口
 
-## 最新技术通过与交付待办（当前优先）
+## 1.1 已交付（2026-10-10，当前状态）
 
-2026-10-10：CadProcess905988有限自然退出确认窗口（非白名单，Active0门禁）、SceneB2E8有符号共面边缓存、converterC4BA严格真零面积49过滤已独审。全量18CTest全部通过32.07s；完整Python17通过25.343s，review独立纯3通过。fresh build-1.1/bin/cad-runtime已校473文件manifest与workerC4BA，旧runtime已保留到同bin/cad-runtime-v1.0-preserved-20261010-131853。
+1.1.0 已完成实现、全量自动门槛、原生实机验证、独立审查与打包：源码提交 a5fd782fc48ea4ef8fd095434ea4e906d38b2dc2（打包时工作区干净），分支 codex/desktop-assembly-1.1，标签 v1.1.0，main 同步该提交。正式入口/Build/Package/Run 已统一 build-1.1，旧 build/bin 与 1.0 包保留。
 
-Windows独立harness完整accepted1/FBO实际4samples、8×4加载销毁QQpointer归零（不是零泄漏证明）；新边cache六件真实STEP四views/axis/pull/清选保隔离/source/DBrestart完整通过。82原STEP现在严格import已成功保82实体/157558v/175598t，但第一次截图frame在屏内/client不同步的断言失败；仅测试加bounded3s几何稳定150ms+原双包含断言（6A5ACEF4），根正在重跑真实82，日志cad82-settled。不得把只import成功记整83验收通过。
+交付包 equipment-viewer-1.1.0-20261010-135556（ZIP SHA256 E01C361420E3140696DAFAF6F695A2EC3030E8533362EE6F6A1740498F411F0E；主程序 SHA256 69CDEF1A0F61A61BEF249738CADF4C33F07642ED81EDF3B9AF54A99B4B404682），511 文件，无数据库与凭证，含真实装配样例与 CC-BY-3.0 许可。全量 18 项 CTest 通过 32.07 秒（含 cad_import_process 9.90 秒与独立模拟用户 harness 0.93 秒），CAD 转换器独立 17 项通过 25.343 秒，独立 harness 原生 FBO 实际 samples=4、8×4 加载销毁后自有 QObject 全部回收（不声称零泄漏）。
 
-正式入口/Build/Package/Run都已统一build-1.1，源码已保存；下一步82完整native及制品技术审→交付文档/干净commit→新包实际启动/包内CAD→main/开发branch/v1.1.0远端。当前仅开发检查点，不创建1.1发布标签，不更新main，真人满意验收待体验。
+包内 CAD 运行库完成真实 STEP 原生导入：六件电机 4162 顶点/4332 三角、82 件装配 157558 顶点/175598 三角，四种视图、世界 XYZ 四位置、有序展开、单件拉远、双击空白清选中保隔离、显示全部退出、数据库重启后源参数逐字段一致；包内 EXE 原生冒烟启动通过（临时库）。正常数据 data/records.sqlite 与 f01-acceptance.sqlite 未修改，升级前在线备份在 .recovery/databases/20261010-004600-562654（quick_check=ok，未声称恢复验证），旧运行库保留在 build-1.1/bin/cad-runtime-v1.0-preserved-20261010-131853，后端 API/Redis/MySQL 仍为 1.0 服务。真人满意验收待用户实际体验，不能以自动/模拟结果代替；未验证其他机器、长期复杂装配性能与制造级标注。
 
-## 恢复后的最新诊断（优先，未完成交付）
+## 恢复过程诊断（历史记录，已由上方1.1交付状态取代）
 
 截至当前：Scene signed边缓存B2E8/新test184CF普通cube12棱、反向winding18棱；r07比较前关物理grid保严格几何像素，已通过。六轮构建后其他17个CTest通过，CAD process门禁尚未关闭；正常exit0/normal1仍观察到本Job livePID，QueryFullImage权限5、ToolhelpSnapshot不再含该PID，UI调查查询时间竞态，未放松Active0门禁；NoWindow显式flags0x8080400没单独解决，不把console假设写为确定原因。
 

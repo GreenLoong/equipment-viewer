@@ -1,8 +1,8 @@
-# 设备模型查看器 · 1.1.0集成中
+# 设备模型查看器 · 1.1.0
 
 工业软件工作模拟项目：Qt/C++桌面查看设备和零件，SQLite保存本地资料，HTTP与MySQL提供团队共享库及工艺批注，Redis缓存不可变几何。
 
-**当前版本：[v1.0.0](https://github.com/GreenLoong/equipment-viewer/tree/v1.0.0)。** 已逐版完成0.3..0.9，再整合Windows桌面工作模拟Demo。功能、包与检查边界见[1.0交付记录](docs/releases/1.0.md)。
+**当前版本：1.1.0。** 已逐版完成0.3..0.9，整合为1.0桌面交付，并按用户要求把独立装配预览的交互正式移植到原生Qt。1.1功能、包与检查边界见[1.1交付记录](docs/releases/1.1.md)；1.0历史见[1.0交付记录](docs/releases/1.0.md)。
 
 ## 已交付能力
 
@@ -17,7 +17,7 @@
 JSON支持box/cylinder；STEP读取闭合实体，独立开放面/壳/线与混合文件整份拒绝。CAD当前只在本地查看，团队服务明确拒绝CAD发布；制造标注、CAD编辑、IGES和厂商原生格式未实现。显示名用于协作演示，不代表独立登录账号。项目未公开部署。
 
 
-当前正在把用户确认的独立装配Demo移植到原生Qt桌面，branch codex/desktop-assembly-1.1。范围为多视图/坐标轴/有序展开/单件拉远/颜色/边缘尺寸/隔离取消选择；1.0历史包和标签保留，后端API仍兼容1.0。实现与实际验证进度见[1.1记录](docs/releases/1.1.md)，尚未完成技术交付。独立编译用 `scripts/build.ps1 -BuildDirectory build-1.1`，打包用 `scripts/package.ps1 -BuildDirectory build-1.1 -OutputRoot <交付目录>`。
+1.1 已按用户要求把独立装配预览的交互移植到原生Qt：默认彩色装配、工程轴测、二维正交与同毫米比例三视图，世界XYZ四位置，默认关闭的包络尺寸边缘读数，沿原包络中心的有序轴展开、单件拉远、稳定配色与自定义颜色，以及“双击空白只清选中并保留单件展示”。原始位置与尺寸仍只读，展开和拉远只是显示偏移，不写入资料库。1.0包、旧build/bin与独立预览保留。构建与验证入口：`scripts/build.ps1 -BuildDirectory build-1.1`，打包 `scripts/package.ps1 -BuildDirectory build-1.1 -OutputRoot <交付目录>`；结果见[1.1记录](docs/releases/1.1.md)。
 
 ## 本机快速运行
 
@@ -46,6 +46,7 @@ JSON支持box/cylinder；STEP读取闭合实体，独立开放面/壳/线与混�
 | 0.8 | 真实机械STEP模型导入、显示与持久化 | 已发布 |
 | 0.9 | 有限资源检查、真实恢复、可复现运行库与验证入口 | 已发布 |
 | 1.0 | 前述阶段整合与最终交付 | 已通过源码、包及模拟试用交付检查 |
+| 1.1 | 原生装配查看：多视图、坐标轴位置、有序展开、单件拉远、配色与边缘尺寸 | 已打包交付；真人满意验收待体验 |
 
 0.6实际验证包括12项CTest、38项Node纯检查、真实MySQL兼容回归、真实Redis TTL/坏值/超限/恢复，以及Windows与offscreen实际GUI验收。执行主体与限制见[0.6验证记录](docs/releases/0.6.md)。技术检查、自动模拟验收与真实用户验收分别记录，不声称零泄漏或其他电脑性能已验证。
 
@@ -68,3 +69,5 @@ JSON支持box/cylinder；STEP读取闭合实体，独立开放面/壳/线与混�
 源码按Git提交和版本标签保留；运行数据库与私密配置另行备份，Git回退不能恢复数据库。不要删除正常库或使用 `reset --hard`/`clean` 丢弃未完成工作。Windows桌面包保存于本次聊天的本机outputs目录，不包含数据库和令牌。
 
 最终Windows包：`equipment-viewer-1.0.0-20261009-110210.zip`，解压后双击“启动设备查看器.cmd”；包已附Qt及私有CAD运行库。CMake/应用/API/锁文件均1.0.0，源码标签对应7f6fcadb2bd06fbaad8f689570eb152c37803a2a。新业务从实际反馈继续，三条非阻断Agent候选保存在simulated-feedback；真实用户验收与技术/模拟结果不混写。
+
+1.1.0 Windows包：`equipment-viewer-1.1.0-20261010-135556.zip`（ZIP SHA256 `E01C361420E3140696DAFAF6F695A2EC3030E8533362EE6F6A1740498F411F0E`），解压后双击“启动设备查看器.cmd”；包内主程序SHA256 `69CDEF1A0F61A61BEF249738CADF4C33F07642ED81EDF3B9AF54A99B4B404682`，附Qt与私有CAD运行库及真实装配样例，不含数据库、凭证和本地配置。源码提交 `a5fd782fc48ea4ef8fd095434ea4e906d38b2dc2`，标签 v1.1.0。1.0包与旧build目录保留，可直接回退。
