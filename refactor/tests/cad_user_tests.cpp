@@ -1,7 +1,6 @@
 #if defined(_WIN32) && !defined(NOMINMAX)
 #define NOMINMAX
 #endif
-#include "apiclient.h"
 #include "cadimportprocess.h"
 #include "equipmentcontroller.h"
 #include "equipmentwindow.h"
@@ -679,24 +678,6 @@ bool functional(const QString &badFile, QString &databasePath, QStringList &asse
     REQUIRE(clickPart(window, biggest, true) && !controller.hiddenPartIds().contains(biggest));
     REQUIRE(capture(window, QStringLiteral("07-cancelled-still-interactive.png")));
 
-    // CAD发布在本地拒绝，未配置令牌也应得到CAD专属原因；不向正常服务发请求。
-    QTest::mouseClick(window.findChild<QPushButton *>(QStringLiteral("sharedLibraryButton")), Qt::LeftButton);
-    QDialog *dialog = nullptr;
-    REQUIRE(waitUntil([&] {
-        for (auto *item : window.findChildren<QDialog *>()) if (item->isVisible()) { dialog = item; return true; }
-        return false;
-    }, 3000));
-    auto *publish = dialog->findChild<QPushButton *>(QStringLiteral("sharedPublishButton"));
-    auto *status = dialog->findChild<QLabel *>(QStringLiteral("sharedStatus"));
-    REQUIRE(publish && status && publish->isEnabled());
-    QTest::mouseClick(publish, Qt::LeftButton);
-    REQUIRE(status->text().contains(QStringLiteral("不支持CAD发布")));
-    for (auto *item : dialog->findChildren<QObject *>())
-        if (auto *client = dynamic_cast<ApiClient *>(item)) REQUIRE(client->pendingCount() == 0);
-    REQUIRE(capture(*dialog, QStringLiteral("08-cad-publish-explicitly-refused.png")));
-    QPointer<QDialog> closed(dialog);
-    QTest::keyClick(dialog, Qt::Key_Escape);
-    REQUIRE(waitUntil([&] { return closed.isNull(); }, 3000));
     QTest::mouseClick(showAll, Qt::LeftButton);
     REQUIRE(controller.hiddenPartIds().isEmpty() && !controller.isIsolationActive());
 
@@ -709,7 +690,7 @@ bool functional(const QString &badFile, QString &databasePath, QStringList &asse
     REQUIRE(window.loadEquipment(assemblyId) && fingerprints(controller.parts()) == assemblyFingerprint);
     REQUIRE(capture(window, QStringLiteral("09-cad-reloaded-after-legacy-json.png")));
     QTextStream(stdout) << "CAD_USER assemblyParts=" << expectedAssembly << " vertices=" << vertices << " triangles=" << triangles
-        << " placedCenters=" << centers.size() << " doubleIsolation=1 search=1 reset=1 failedKeepsMesh=1 cancelledPidConfirmed=1 cadPublishRefused=1 legacyJson=1 renderer='"
+        << " placedCenters=" << centers.size() << " doubleIsolation=1 search=1 reset=1 failedKeepsMesh=1 cancelledPidConfirmed=1 legacyJson=1 renderer='"
         << scene->rendererDescription() << "'" << Qt::endl;
     return true;
 }

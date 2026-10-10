@@ -1,7 +1,6 @@
 #include "equipmentwindow.h"
 #include "equipmentcontroller.h"
 #include "sceneview.h"
-#include "collaborationdialog.h"
 #include "cadimportprocess.h"
 #include "numericutil.h"
 
@@ -86,19 +85,6 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     cadCancelButton_->setEnabled(false);
     toolbar->addWidget(cadCancelButton_);
     connect(cadCancelButton_, &QPushButton::clicked, this, [this] { cancelCadImport(); });
-    auto *sharedButton = new QPushButton(QStringLiteral("团队共享库"), this);
-    sharedButton_ = sharedButton;
-    sharedButton->setObjectName(QStringLiteral("sharedLibraryButton"));
-    toolbar->addWidget(sharedButton);
-    connect(sharedButton, &QPushButton::clicked, this, [this] {
-        auto *dialog = new CollaborationDialog(controller_, this);
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->onLocalImported = [this] {
-            displayLoadedEquipment();
-            refreshEquipmentChoices();
-        };
-        dialog->open();
-    });
     toolbar->addStretch();
     toolbar->addWidget(equipmentId_);
     layout->addLayout(toolbar);
@@ -463,7 +449,6 @@ void EquipmentWindow::setCadBusy(bool busy)
     importButton_->setEnabled(!busy);
     cadCancelButton_->setEnabled(busy);
     // 转换期间保留当前设备的交互；禁止其他导入入口竞争提交新设备。
-    sharedButton_->setEnabled(!busy);
 }
 
 bool EquipmentWindow::cancelCadImport()

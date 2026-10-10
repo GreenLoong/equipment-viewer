@@ -44,19 +44,22 @@ if (Test-Path -LiteralPath $dataDirectory -PathType Container) {
     Write-Output "REMOVED: $dataDirectory（交付目录不携带资料库）"
 }
 
-# 只复制程序真正加载的运行库：Qt6Test 仅测试程序使用，不进交付目录。
+# 只复制程序真正加载的运行库：Qt6Test 仅测试程序使用；Qt6Network 自 1.2.0 移除
+# 团队共享库后不再被主程序导入，两者都不进交付目录。
 $applicationName = '设备查看器.exe'
 Copy-Item -LiteralPath $executable -Destination (Join-Path $target $applicationName) -Force
-Get-ChildItem -LiteralPath $bin -File -Filter '*.dll' | Where-Object { $_.Name -ne 'Qt6Test.dll' } | ForEach-Object {
+Get-ChildItem -LiteralPath $bin -File -Filter '*.dll' | Where-Object { $_.Name -notin @('Qt6Test.dll', 'Qt6Network.dll') } | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $target $_.Name) -Force
 }
-# 清掉早期交付版本可能残留的测试专用运行库：目标目录是本脚本产物，刷新后应只含运行所需文件。
-$staleTestLibrary = Join-Path $target 'Qt6Test.dll'
-if (Test-Path -LiteralPath $staleTestLibrary -PathType Leaf) {
-    Remove-Item -LiteralPath $staleTestLibrary -Force
-    Write-Output "REMOVED: $staleTestLibrary（仅测试程序使用）"
+# 清掉早期交付版本可能残留的文件：目标目录是本脚本产物，刷新后应只含运行所需文件。
+foreach ($stale in @('Qt6Test.dll', 'Qt6Network.dll', 'tls', 'networkinformation')) {
+    $stalePath = Join-Path $target $stale
+    if (Test-Path -LiteralPath $stalePath) {
+        Remove-Item -LiteralPath $stalePath -Recurse -Force
+        Write-Output "REMOVED: $stalePath（1.2.0 起交付目录不再包含）"
+    }
 }
-foreach ($plugin in @('platforms', 'sqldrivers', 'styles', 'imageformats', 'iconengines', 'generic', 'networkinformation', 'tls')) {
+foreach ($plugin in @('platforms', 'sqldrivers', 'styles', 'imageformats', 'iconengines', 'generic')) {
     $source = Join-Path $bin $plugin
     if (Test-Path -LiteralPath $source -PathType Container) {
         Copy-Item -LiteralPath $source -Destination (Join-Path $target $plugin) -Recurse -Force

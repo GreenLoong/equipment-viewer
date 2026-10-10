@@ -1,7 +1,6 @@
 #include "cadimportprocess.h"
 #include "equipmentcontroller.h"
 #include "equipmentwindow.h"
-#include "collaborationdialog.h"
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
@@ -240,9 +239,6 @@ bool windowFlow()
     CHECK(window.findChild<QGroupBox *>("boxDimensions")->title().contains(QStringLiteral("外包络")));
     CHECK(window.findChild<QGroupBox *>("positionGroup")->title().contains(QStringLiteral("外包络中心")));
     CHECK(window.findChild<QLabel *>("cadSource")->text().contains("motor.step"));
-    CollaborationDialog dialog(controller);
-    dialog.findChild<QPushButton *>("sharedPublishButton")->click();
-    CHECK(dialog.findChild<QLabel *>("sharedStatus")->text().contains(QStringLiteral("暂不支持CAD发布")));
     CHECK(window.loadEquipment("old"));
     auto wrong = QJsonDocument::fromJson(protocol()).object(); wrong["protocol"] = "wrong";
     CHECK(fixture.initialize("pathlib.Path(a.output).write_bytes(bytes.fromhex('"

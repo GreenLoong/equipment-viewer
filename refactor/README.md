@@ -1,27 +1,34 @@
-# 去重重构件（refactor/）
+# 设备模型查看器 · 去重重构版（refactor/）
 
-2026-10-11 生成。本目录是按“重新审查代码、去掉重复实现”的要求产出的独立重构副本，
-**工程原有源码、测试与构建入口未做任何修改**（见下方“原工程未改动”证据）。
+本目录 2026-10-11 生成，自 v1.2.0 起是**项目的正式源码树**。它按“重新审查代码、去掉重复实现”的
+要求产出：公开类、公开接口签名、对象名与用户可见文案保持不变，消除 18 类重复实现，抽出 4 个内部
+共用头文件（`numericutil.h`、`partvalidation.h`、`jsonutil.h`、`sqliteconnection.h`），并承接
+1.1.x 之后的正式产品改动（应用图标、默认打开设备查看器、方向轴与抗锯齿修复）。
+
+v1.2.0 按用户要求**整体移除“团队共享库/工艺批注”**这一可选服务：客户端对话框、HTTP 客户端、
+Node/MySQL/Redis 服务端、相关测试与接口契约文档一并删除，主程序不再链接 Qt Network。
+1.1.1 及更早的历史实现仍完整保存在 Git 标签 `v1.1.1`，需要时可用
+`git checkout v1.1.1 -- api` 等命令取回参考。
 
 ## 目录结构
 
 | 路径 | 内容 |
 | --- | --- |
-| `src/` | 去重后的实现源码；文件与公开接口沿用原文件名，行为保持不变 |
-| `tests/` | 原 `tests/*.cpp` 的逐字节副本（21 个），仅供本目录独立构建与验证 |
-| `tools/` | 构建用 `environment_probe.cpp` 逐字节副本，以及审查与校验脚本 |
-| `CMakeLists.txt` | 本目录独立构建入口；目标名与测试名与根工程一致 |
+| `src/` | 去重后的正式实现源码 |
+| `tests/` | 与工程根目录 `tests/` 同名的测试副本；3 个文件（`cad_user_tests.cpp`、`cad_import_process_tests.cpp`、`reviewer_resource_tests.cpp`）因移除共享库而有意分叉，其余仍逐字节一致 |
+| `tools/` | 构建用 `environment_probe.cpp` 副本，以及重复度审查与副本一致性校验脚本 |
+| `CMakeLists.txt` | 本目录的独立构建入口；目标名、测试名与根工程保持一致 |
 | `build.ps1` | 独立构建脚本（工具链参数与 `scripts/build.ps1` 相同，只改 `-S` 指向） |
+| `package.ps1` | 交付目录打包脚本（只复制运行所需文件，不复制源码、测试、资料库与凭证） |
+| `resources/` | 应用图标（`app.ico`、`app.rc`、`app.qrc`、图标预览） |
 | `docs/dedup-report.md` | 重复实现审查报告：证据、处理方式、残留项与验证结果 |
 | `docs/harness-sha256.txt` | 测试/探针副本的 SHA256 清单 |
-
-`src/` 新增 4 个内部共用头文件：`numericutil.h`、`partvalidation.h`、`jsonutil.h`、
-`sqliteconnection.h`；它们只服务于去重，不扩展业务功能。
+| `docs/package/` | 交付文档：使用说明、技术说明、验证记录、README |
 
 ## 构建与验证
 
 ```powershell
-# 方式一：一键配置 + 构建 + 部署 + 全量 CTest（约 1 分钟）
+# 方式一：一键配置 + 构建 + 部署 Qt + 同步 CAD 运行库 + 全量 CTest
 .\refactor\build.ps1
 
 # 方式二：手动执行
@@ -37,38 +44,45 @@ CAD 相关用例需要显式运行库路径：把 `.runtime/cad-distribution/cad
 `build-refactor/bin/cad-runtime`（`build.ps1` 用 `scripts/sync-cad-runtime.ps1` 完成），
 或设置 `EQUIPMENT_CAD_PYTHON` / `EQUIPMENT_CAD_MODULES` / `EQUIPMENT_CAD_CONVERTER`。
 
-原生图形验收（真实窗口与 FBO，需桌面会话）：
+原生图形验收（真实窗口与 FBO，需要桌面会话）：
 
 ```powershell
 build-refactor\bin\r11_desktop_tester.exe -platform windows --snapshot-dir build-refactor\r11-native
+build-refactor\bin\cad_user_tests.exe -platform windows --assembly-preview-check `
+  --assembly samples\cad\Yellow_gearmotor_straight.step --expected-assembly-count 6 `
+  --snapshot-dir build-refactor\cad-native
 ```
 
-## 本次实际验证结果（2026-10-11）
+## v1.2.0 实际验证结果（2026-10-11）
 
-- 编译：23 个目标全部通过，`-Wall -Wextra -Wpedantic` 零警告零错误（`build-refactor/build-log-clean.txt`）。
-- 自动检查：**18/18 CTest 通过**（首次 31.09 秒、最终复验 27.78 秒、一键脚本含 CAD 运行库同步 30.25 秒），
-  与原实现同门槛。
-- 一键入口：`.\refactor\build.ps1` 实际跑通（重新配置 → 编译 → 部署 Qt → `scripts/sync-cad-runtime.ps1`
-  同步 `build-refactor/bin/cad-runtime` → CTest 18/18），不依赖外部环境变量。
-- 原生图形：`r11_desktop_tester` 原生通过（`accepted=1`，实测 `samples=4`、超采样 `1.5x`、
-  坐标轴/受限网格/四视图/鼠标契约全部接受，退出码 0）。
-- 测试未被削弱：`refactor/tests`、`refactor/tools/environment_probe.cpp` 与根目录同名文件
-  逐字节一致（`.\refactor\tools\verify-harness-copy.ps1` → `checked=22 mismatches=0`）。
-- 重复度：`sceneview.cpp` 内 ≥80 词的重复实现片段由 7 组降为 0 组；
-  全 `src` ≥60 词的报告组数由 60 组降到 50 组（残留均为声明列表形态相似，见报告）。
+- 编译：115 个构建步骤、59 次编译、27 次链接全部通过，`-Wall -Wextra -Wpedantic` 零警告零错误
+  （日志 `build-refactor/build-log-1.2.0.txt`）。
+- 自动检查：**17/17 CTest 通过**（22.22 秒）。比 1.1.1 少 2 项，且不是削弱：移除的
+  `api_client_lifecycle`、`annotation_client_faults` 两项随功能整体删除，其余用例断言未改动。
+- 原生图形：`r11_desktop_tester -platform windows` → `accepted=1`，实测 FBO `samples=4`、
+  超采样 `2.0x`，坐标轴三轴、受限网格、四视图与鼠标契约全部通过。
+- 真实 STEP：6 件齿轮箱装配 `--assembly-preview-check` 原生通过（`parts=6 vertices=4162
+  triangles=4332 realStepImport=1 fourViews=1 databaseRestartExact=1 native=1`）。
+- 资源基线：`reviewer_resource_tests.exe -platform offscreen --batches 2 --windows 6 --loads 3`
+  通过：窗口与 Scene 反复创建销毁后，控件、窗口、QObject 子树与 SQL 连接数回到基线。
+- 主程序依赖：`qt_sqlite_demo.exe` 已不再导入 `Qt6Network.dll`，交付目录相应去掉
+  `Qt6Network.dll`、`tls`、`networkinformation`。
 
-## 原工程未改动证据
+## 与工程根目录的关系
+
+根目录的 `src/`、`tests/`、`CMakeLists.txt`、`scripts/`、`tools/`、`samples/` 仍与 1.1.1
+逐字节一致，作为历史快照保留：
 
 ```powershell
-git -c safe.directory="D:/作业/简历/工作模拟" status --short   # 只显示新增的 refactor/
 git -c safe.directory="D:/作业/简历/工作模拟" diff --stat -- src tests CMakeLists.txt scripts tools samples
-# 无输出：原有源码、测试、构建与打包入口逐字节未变
+# 无输出：历史实现未改动
 ```
+
+v1.2.0 的改动只发生在 `refactor/`、根 `README.md`、`docs/`（删除被移除功能的契约与缓存规划文档、
+追加工作状态记录）以及删除 `api/`（共享库服务端）。对照阅读用
+`git diff --no-index src refactor/src`。
 
 ## 使用建议
 
-- 需要对照阅读时，用 `git diff --no-index src refactor/src` 查看逐条改动。
-- 本目录不是新的发布版本：版本号、打包、远端推送仍按原工程的流程处理；
-  若要正式合并，应把 `src/` 的改动按补丁方式落到主树并重新跑独立审查与验收。
-- 测试侧仍存在大量重复的窗口/临时库样板（详见报告“残留与后续项”），本次未改，
-  因为测试是验收证据，改动需要单独的功能卡与独立复验。
+- 日常开发、构建与打包都以本目录为入口；根目录 `scripts/*.ps1` 仍服务于 1.1.1 历史构建。
+- 测试侧仍存在大量重复的窗口/临时库样板（详见报告“残留与后续项”），改动需要单独的功能卡与复验。

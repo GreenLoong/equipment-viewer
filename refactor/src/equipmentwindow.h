@@ -92,7 +92,6 @@ private:
     CadImportProcess *cadImport_;
     QPushButton *importButton_;
     QPushButton *cadCancelButton_;
-    QPushButton *sharedButton_;
     QComboBox *viewModeSelector_;
     QComboBox *projectionSelector_;
     QComboBox *axisPlacementSelector_;

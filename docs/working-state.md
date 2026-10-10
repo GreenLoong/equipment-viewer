@@ -1,5 +1,37 @@
 # 当前工作状态与中断恢复入口
 
+## 1.2.0 正式版（2026-10-11）：去重重构版定为正式版本 + 整体移除团队共享库
+
+用户要求：把去重重构版（`refactor/`）定为正式版本，整体去掉“团队共享库”这一功能，并覆盖 GitHub 上的内容。
+
+- 功能移除：删除 `refactor/src/collaborationdialog.{h,cpp}`、`refactor/src/apiclient.{h,cpp}`、
+  4 个只服务该功能的测试（`api_client_tests.cpp`、`shared_user_tests.cpp`、`cache_user_tests.cpp`、
+  `reviewer_annotation_faults.cpp`）、服务端目录 `api/`（28 个受版本控制的文件）、
+  文档 `docs/api-contract.md` 与 `docs/cache-plan-0.6.md`。
+  窗口去掉“团队共享库”按钮与成员；`refactor/CMakeLists.txt` 去掉 `Qt6::Network` 与对应测试目标；
+  3 个保留测试去掉共享库步骤（`cad_user_tests.cpp`、`cad_import_process_tests.cpp`、
+  `reviewer_resource_tests.cpp`，已在 `refactor/docs/harness-sha256.txt` 标注 diverged-by-design）。
+- 交付侧：`refactor/package.ps1` 不再复制 `Qt6Network.dll`、`tls`、`networkinformation`，并在刷新时
+  清除旧版本残留；打包脚本新增说明注释。
+- 文档：根 `README.md` 重写为正式版说明（功能、架构、验证、版本历史、未实现清单）；
+  `docs/architecture.md`、`docs/user-guide.md` 顶部加版本提示；`refactor/README.md`、
+  `refactor/docs/package/{README,01,02,03}.md`、`refactor/docs/dedup-report.md` 同步更新；
+  新增 `refactor/docs/package/05-简历与面试演示指南.md`（简历写法、面试讲解、难点、未实现、演示脚本）。
+- 实际验证：`.\refactor\build.ps1` 全量重建 115 步、59 次编译、27 次链接、`-Wall -Wextra -Wpedantic`
+  零警告（日志 `build-refactor/build-log-1.2.0.txt`）；`ctest` **17/17 通过 22.22 秒**（比 1.1.1 少 2 项，
+  减少的两项随功能整目标删除）；`r11_desktop_tester -platform windows` → `accepted=1`，
+  FBO 实测 `samples=4`、超采样 `2.0x`；真实 STEP 6 件齿轮箱装配原生通过
+  （`parts=6 vertices=4162 triangles=4332`）；`reviewer_resource_tests` offscreen 通过（回到基线）；
+  `refactor/tools/verify-harness-copy.ps1` → `checked=15 mismatches=0`；
+  `qt_sqlite_demo.exe` 不再导入 `Qt6Network.dll`。
+- 交付包：`D:\作业\简历\cad查看器` 重新打包，533 文件 / 238.5 MB，
+  `设备查看器.exe` SHA256 `446571B2DC1C86E98D1C7A9B640471707FC46CF5790041FF8DD42C1BEE918782`；
+  包内 offscreen 冒烟 `exit=0`，另用原生 `-platform windows --smoke-test` 实际启动一次（截图
+  `build-refactor/packaged-native-1.2.0.png`），确认工具栏已无“团队共享库”入口。
+- 未做：根目录 1.1.1 历史树（`src/tests/CMakeLists.txt/scripts/tools`）保持逐字节不改；
+  本机 `api\node_modules`、`api\runtime`（忽略的本机配置与依赖）未删除，保留在磁盘，可自行清理；
+  真人满意验收仍未进行。被删代码可从标签 `v1.1.1` 取回。
+
 ## 去重重构件 refactor/（2026-10-11，独立副本，未改原源码）
 
 用户要求“重新审查代码、去掉重复实现，并把重构后的代码放到新文件夹，不能修改源代码”。已完成：

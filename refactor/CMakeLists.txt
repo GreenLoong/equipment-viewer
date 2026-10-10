@@ -3,13 +3,16 @@
 # 样例数据仍读取工程根目录 samples（只作数据，不参与编译）。
 # 目标名、测试名与根 CMakeLists.txt 一致，便于用同一套 CTest 门槛验证重构结果。
 cmake_minimum_required(VERSION 3.21)
-project(EquipmentViewerRefactor VERSION 1.1.1 LANGUAGES CXX)
+# 1.2.0：去重重构版成为正式版本，并按用户要求整体移除“团队共享库/工艺批注”
+# 这一可选服务（客户端对话框、HTTP 客户端、Node/MySQL/Redis 服务端与相关测试一并删除，
+# 历史实现仍保留在 Git 标签 v1.1.1）。因此本目录不再需要 Qt6::Network。
+project(EquipmentViewerRefactor VERSION 1.2.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Sql OpenGL OpenGLWidgets Network)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Sql OpenGL OpenGLWidgets)
 
 # 现有工程根目录：只复用其中的 samples 数据，避免复制会漂移的模型样例。
 set(EV_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
@@ -27,9 +30,8 @@ add_library(scene_view src/sceneview.cpp src/sceneview.h)
 target_link_libraries(scene_view PUBLIC equipment_repository Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets)
 add_library(equipment_window src/equipmentcontroller.cpp src/equipmentcontroller.h
     src/cadimportprocess.cpp src/cadimportprocess.h
-    src/equipmentwindow.cpp src/equipmentwindow.h src/apiclient.cpp src/apiclient.h
-    src/collaborationdialog.cpp src/collaborationdialog.h)
-target_link_libraries(equipment_window PUBLIC equipment_importer scene_view Qt6::Widgets Qt6::Network)
+    src/equipmentwindow.cpp src/equipmentwindow.h)
+target_link_libraries(equipment_window PUBLIC equipment_importer scene_view Qt6::Widgets)
 add_library(record_window src/mainwindow.cpp src/mainwindow.h)
 target_link_libraries(record_window PUBLIC record_store Qt6::Widgets)
 
@@ -106,21 +108,9 @@ if(BUILD_TESTING)
     target_link_libraries(simulated_user_tests PRIVATE equipment_window Qt6::Test)
     add_test(NAME simulated_user_acceptance COMMAND simulated_user_tests -platform offscreen)
     set_tests_properties(simulated_user_acceptance PROPERTIES TIMEOUT 45)
-    add_executable(api_client_tests "tests/api_client_tests.cpp")
-    target_link_libraries(api_client_tests PRIVATE equipment_window Qt6::Test)
-    add_test(NAME api_client_lifecycle COMMAND api_client_tests -platform offscreen)
-    set_tests_properties(api_client_lifecycle PROPERTIES TIMEOUT 45)
-    add_executable(shared_user_tests "tests/shared_user_tests.cpp")
-    target_link_libraries(shared_user_tests PRIVATE equipment_window Qt6::Test)
-    add_executable(cache_user_tests "tests/cache_user_tests.cpp")
-    target_link_libraries(cache_user_tests PRIVATE equipment_window Qt6::Test)
 endif()
 
 if(BUILD_TESTING)
-    add_executable(reviewer_annotation_faults "tests/reviewer_annotation_faults.cpp")
-    target_link_libraries(reviewer_annotation_faults PRIVATE equipment_window Qt6::Test)
-    add_test(NAME annotation_client_faults COMMAND reviewer_annotation_faults -platform offscreen)
-    set_tests_properties(annotation_client_faults PROPERTIES TIMEOUT 60)
     add_executable(reviewer_resource_tests "tests/reviewer_resource_tests.cpp")
     target_link_libraries(reviewer_resource_tests PRIVATE equipment_window Qt6::Test)
 endif()

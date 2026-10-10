@@ -3,12 +3,17 @@
 $ErrorActionPreference = 'Stop'
 $refactorRoot = Split-Path -Parent $PSScriptRoot
 $projectRoot = Split-Path -Parent $refactorRoot
+# 1.2.0 起有意分叉的测试：整体移除“团队共享库/工艺批注”后，这几个文件删掉了相关步骤，
+# 与本目录不再逐字节一致，属预期差异，不计入不一致数量。
+$diverged = @('tests/cad_user_tests.cpp', 'tests/cad_import_process_tests.cpp', 'tests/reviewer_resource_tests.cpp')
 $mismatch = 0
 $checked = 0
 foreach ($relative in @('tests', 'tools')) {
     if ($relative -eq 'tests') { $files = Get-ChildItem (Join-Path $refactorRoot 'tests') -File -Filter *.cpp }
     else { $files = Get-ChildItem (Join-Path $refactorRoot 'tools') -File -Filter environment_probe.cpp }
     foreach ($file in $files) {
+        $key = "$relative/$($file.Name)"
+        if ($diverged -contains $key) { Write-Output "diverged-by-design: $key"; continue }
         $original = Join-Path (Join-Path $projectRoot $relative) $file.Name
         if (-not (Test-Path -LiteralPath $original -PathType Leaf)) {
             # 重构树新增的测试（原工程没有对应文件）单独列出，不参与逐字节比对。
