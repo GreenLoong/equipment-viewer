@@ -137,6 +137,11 @@ int main(int argc, char **argv)
     app.sendEvent(canvas, &pendingRelease);
     REQUIRE(picks == beforeCancelled);
     scene.setGridVisible(true);
+    // 地面与视线接近平行时（正视/右视正交）不再画参考网格：重合线互相叠加会变亮，也没有判读价值。
+    scene.setViewMode(SceneView::ViewMode::Front);
+    REQUIRE(scene.gridLineCount() == 0);
+    scene.setViewMode(SceneView::ViewMode::Isometric);
+    REQUIRE(scene.gridLineCount() > 0);
     for (double dimension : {std::numeric_limits<double>::max(), std::numeric_limits<double>::denorm_min()}) {
         Part extreme = assemblyBox(QStringLiteral("GRID-EXTREME"), 0);
         extreme.sizeX = extreme.sizeY = extreme.sizeZ = dimension;
@@ -150,6 +155,76 @@ int main(int argc, char **argv)
         REQUIRE(!scene.grab().isNull());
     }
     REQUIRE(!scene.rendererDescription().contains(QStringLiteral("场景错误")));
+    // 参考网格必须受限：滚轮放大到多级都不允许网格范围随缩放发散（旧放射状长线的回归）。
+    const auto frame = [&]() {
+        if (auto *gl = qobject_cast<QOpenGLWidget *>(canvas)) return gl->grabFramebuffer();
+        return canvas->grab().toImage();
+    };
+    scene.setParts({assemblyBox(QStringLiteral("GRID-SCOPE"), 0)});
+    const auto wheelZoom = [&](int steps) {
+        for (int i = 0; i < steps; ++i) {
+            QWheelEvent event(QPointF(canvas->width() / 2.0, canvas->height() / 2.0),
+                QPointF(canvas->width() / 2.0, canvas->height() / 2.0), QPoint(), QPoint(0, 120),
+                Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+            QApplication::sendEvent(canvas, &event);
+        }
+        app.processEvents();
+    };
+    for (int level = 0; level < 3; ++level) {
+        wheelZoom(6);
+        const auto extent = scene.gridExtentMillimeters();
+        REQUIRE(extent[0] > 0 && extent[1] > 0);
+        // 网格半宽不得超过“可见几何最大边×1.6 + 一格”，也就是不许随缩放无限延伸。
+        REQUIRE(extent[0] <= 20.0L * 1.6L + scene.gridStepMillimeters());
+        REQUIRE(extent[0] == extent[1]);
+        REQUIRE(scene.gridLineCount() > 0 && scene.gridLineCount() <= 60);
+        REQUIRE(!frame().isNull());
+    }
+    scene.fitAll();
+    REQUIRE(scene.gridLineCount() > 0 && scene.gridLineCount() <= 60);
+
+    // 鼠标约定与网页版一致：左键旋转、右键平移（正交视图也可用）、中键缩放；
+    // 右键与中键都不得改变选择，也不产生拾取回调。
+    scene.setSelectedPart(QStringLiteral("GRID-SCOPE"));
+    int gesturePicks = 0;
+    scene.onPartPicked = [&](const QString &) { ++gesturePicks; };
+    const QPoint gestureCenter(canvas->width() / 2, canvas->height() / 2);
+    const auto dragWith = [&](Qt::MouseButton button, const QPoint &delta) {
+        QTest::mousePress(canvas, button, Qt::NoModifier, gestureCenter);
+        const QPoint end = gestureCenter + delta;
+        QMouseEvent move(QEvent::MouseMove, QPointF(end), QPointF(canvas->mapToGlobal(end)),
+            Qt::NoButton, button, Qt::NoModifier);
+        QApplication::sendEvent(canvas, &move);
+        QTest::mouseRelease(canvas, button, Qt::NoModifier, end);
+        app.processEvents();
+    };
+    const QVector3D beforePan = scene.cameraTarget();
+    const QImage beforePanFrame = frame();
+    dragWith(Qt::RightButton, QPoint(70, 30));
+    REQUIRE(scene.cameraTarget() != beforePan);
+    REQUIRE(scene.viewMode() == SceneView::ViewMode::Isometric);
+    REQUIRE(gesturePicks == 0);
+    REQUIRE(frame() != beforePanFrame);
+    // 正交视图允许平移，但不允许旋转。
+    scene.setViewMode(SceneView::ViewMode::Front);
+    const QVector3D frontBefore = scene.cameraTarget();
+    dragWith(Qt::RightButton, QPoint(40, 0));
+    REQUIRE(scene.cameraTarget() != frontBefore);
+    const QVector3D frontPan = scene.cameraTarget();
+    dragWith(Qt::LeftButton, QPoint(60, 20));
+    REQUIRE(scene.cameraTarget() == frontPan); // 正视下左键不旋转相机
+    // 中键缩放只改相机距离，不动观察点，也不改选择。
+    const QVector3D beforeZoom = scene.cameraTarget();
+    const QImage beforeZoomFrame = frame();
+    // 中键向下拖 = 拉远（与滚轮、网页版 dolly 方向一致）；此时已在上一步放大到上限，只有拉远才有可见变化。
+    dragWith(Qt::MiddleButton, QPoint(0, 60));
+    REQUIRE(scene.cameraTarget() == beforeZoom);
+    REQUIRE(frame() != beforeZoomFrame);
+    REQUIRE(gesturePicks == 0);
+    // “视角回正”把平移一起复位。
+    scene.setViewMode(SceneView::ViewMode::Isometric);
+    scene.fitAll();
+    REQUIRE(scene.cameraTarget() == QVector3D());
     // 模拟OCCT跨面/三角形重复顶点索引：相同空间坐标仍应焊接成12条棱，源网格不改。
     Part meshBox = assemblyBox(QStringLiteral("EDGE-CUBE"), 0);
     meshBox.shape = QStringLiteral("mesh");

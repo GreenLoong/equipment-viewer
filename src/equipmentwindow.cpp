@@ -67,7 +67,7 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
       prompt_(new QLabel(QStringLiteral("请选择零件"), this)), propertyDetails_(new QWidget(this)),
       count_(new QLabel(this)), status_(new QLabel(this)), cadImport_(new CadImportProcess(this))
 {
-    setWindowTitle(QStringLiteral("开目业务模拟 · 设备模型查看器 1.1.0"));
+    setWindowTitle(QStringLiteral("开目业务模拟 · 设备模型查看器 1.1.1"));
     resize(1440, 900);
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(18, 16, 18, 16);
@@ -148,7 +148,7 @@ EquipmentWindow::EquipmentWindow(EquipmentController &controller)
     sceneToolbar->addWidget(focusButton_);
     scene_->setObjectName(QStringLiteral("sceneView"));
     sceneLayout->addWidget(scene_, 1);
-    auto *hint = new QLabel(QStringLiteral("拖动旋转 · 滚轮缩放 · 短点选中 · 双击空白只清选择，保留单件展示\n单位mm / Z向上；展开与拉远只改变显示位置，不验证机械运动或碰撞约束。"), sceneGroup);
+    auto *hint = new QLabel(QStringLiteral("左键拖动旋转 · 右键拖动平移 · 滚轮/中键缩放 · 短点选中 · 双击空白只清选择，保留单件展示\n单位mm / Z向上；展开与拉远只改变显示位置，不验证机械运动或碰撞约束。"), sceneGroup);
     hint->setWordWrap(true);
     hint->setStyleSheet(QStringLiteral("color: #52677b;"));
     sceneLayout->addWidget(hint);

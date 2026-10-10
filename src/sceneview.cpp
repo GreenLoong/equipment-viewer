@@ -6,7 +6,9 @@
 #include <QMouseEvent>
 #include <QOpenGLBuffer>
 #include <QOpenGLContext>
+#include <QOpenGLFramebufferObject>
 #include <QOpenGLFunctions>
+#include <QOpenGLExtraFunctions>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLWidget>
 #include <QPainter>
@@ -93,6 +95,8 @@ struct SceneData {
     int automaticAxis = 0;
     bool dimensionsVisible = false;
     bool gridVisible = true;
+    /** 原生GL路径自己用深度缓冲画地面网格；叠加层据此避免重复绘制与穿透实体。 */
+    bool gridDrawnInGl = false;
     double explosionFraction = 0;
     double pullFraction = 0;
     int pullDirection = 1;
@@ -139,7 +143,6 @@ struct SceneData {
     struct GridStep {
         long double millimeters = 0;
         float units = 0;
-        int halfLines = 0;
     };
 
     GridStep gridStep() const
@@ -152,8 +155,7 @@ struct SceneData {
         const long double niceMm = (mantissa >= 5 ? 5 : mantissa >= 2 ? 2 : 1) * decade;
         const long double units = niceMm / millimetersPerUnit;
         if (!std::isfinite(niceMm) || niceMm <= 0 || !std::isfinite(units) || units <= 0) return {};
-        // 最多2*(2*14+1)=58条，不随极端坐标或滚轮放大生成无限网格。
-        return {niceMm, float(units), std::clamp(int(std::ceil(2 / units)), 1, 14)};
+        return {niceMm, float(units)};
     }
 
     bool cachePartEdges(qsizetype firstTriangle)
@@ -332,6 +334,109 @@ struct SceneData {
         return projection * view;
     }
 
+    /** 相机基向量；平移与方向轴共用，避免各自重算球坐标导致不一致。 */
+    void cameraBasis(QVector3D &right, QVector3D &upScreen, QVector3D &forward) const
+    {
+        const float y = yaw * float(pi / 180), p = pitch * float(pi / 180);
+        QVector3D direction(std::cos(p) * std::cos(y), std::cos(p) * std::sin(y), std::sin(p));
+        QVector3D up(0, 0, 1);
+        auto mode = viewMode;
+        if (mode == SceneView::ViewMode::ThreeViews) mode = SceneView::ViewMode::Front;
+        if (mode == SceneView::ViewMode::Front) direction = QVector3D(0, -1, 0);
+        else if (mode == SceneView::ViewMode::Top) { direction = QVector3D(0, 0, 1); up = QVector3D(0, 1, 0); }
+        else if (mode == SceneView::ViewMode::Right) direction = QVector3D(1, 0, 0);
+        forward = -direction;
+        right = QVector3D::crossProduct(forward, up);
+        if (right.lengthSquared() < 1e-12f) right = QVector3D(1, 0, 0);
+        right.normalize();
+        upScreen = QVector3D::crossProduct(right, forward).normalized();
+    }
+
+    /** 屏幕像素到世界单位的换算；透视与正交都用同一半高关系，保证拖动跟随光标。 */
+    float worldPerPixel(const QSize &size) const
+    {
+        const float aspect = float(std::max(1, size.width())) / std::max(1, size.height());
+        const float half = distance * float(std::tan(20 * pi / 180));
+        return 2 * half * std::max(1.0f, 1 / aspect) / float(std::max(1, size.height()));
+    }
+
+    /** 右键拖动平移：只移动观察点；越界或非有限位移被拒绝。 */
+    bool panByPixels(const QPointF &delta, const QSize &size)
+    {
+        if (!std::isfinite(delta.x()) || !std::isfinite(delta.y())) return false;
+        QVector3D right, upScreen, forward;
+        cameraBasis(right, upScreen, forward);
+        const float scale = worldPerPixel(size);
+        const QVector3D move = (right * float(-delta.x()) + upScreen * float(delta.y())) * scale;
+        if (!std::isfinite(move.x()) || !std::isfinite(move.y()) || !std::isfinite(move.z())) return false;
+        // 归一化场景在[-1,1]附近；限幅避免把模型拖出可视范围或产生极端相机坐标。
+        target = QVector3D(std::clamp(target.x() + move.x(), -20.0f, 20.0f),
+                           std::clamp(target.y() + move.y(), -20.0f, 20.0f),
+                           std::clamp(target.z() + move.z(), -20.0f, 20.0f));
+        return true;
+    }
+
+    /** 中键拖动缩放；steps>0 为拉近。 */
+    void zoomBySteps(double steps)
+    {
+        if (!std::isfinite(steps)) return;
+        distance = std::clamp(distance * float(std::exp(-std::clamp(steps, -12.0, 12.0))), minimumDistance, 60.0f);
+    }
+
+    /** 可见几何的显示包围盒（含显示偏移）；无可见件返回false。 */
+    bool visibleDisplayBox(QVector3D &low, QVector3D &high) const
+    {
+        bool found = false;
+        for (const auto &bound : bounds) {
+            if (hidden.contains(bound.id)) continue;
+            const QVector3D offset = offsets.value(bound.id);
+            const QVector3D partLow = bound.low + offset, partHigh = bound.high + offset;
+            if (!found) { low = partLow; high = partHigh; found = true; continue; }
+            for (int axis = 0; axis < 3; ++axis) {
+                low[axis] = std::min(low[axis], partLow[axis]);
+                high[axis] = std::max(high[axis], partHigh[axis]);
+            }
+        }
+        return found;
+    }
+
+    struct GridLine {
+        QVector3D a;
+        QVector3D b;
+        bool major = false;
+    };
+
+    /** 受限地面参考网格：格距为自适应毫米步长，范围随可见几何收敛，不再向消失点无限延伸。 */
+    QList<GridLine> gridLines() const
+    {
+        QList<GridLine> result;
+        if (!gridVisible || !hasVisibleGeometry() || viewMode == SceneView::ViewMode::ThreeViews) return result;
+        const GridStep step = gridStep();
+        if (!(step.units > 0) || !(step.millimeters > 0)) return result;
+        // 地面几乎与视线平行时（正视/右视正交）重合线会互相叠加变亮且没有判读价值，索性不画。
+        QVector3D right, upScreen, forward;
+        cameraBasis(right, upScreen, forward);
+        if (std::abs(forward.z()) < 0.12f) return result;
+        QVector3D low, high;
+        if (!visibleDisplayBox(low, high)) return result;
+        const QVector3D size = high - low;
+        const float modelHalf = std::max(size.x(), size.y()) * 0.5f;
+        const int cells = std::clamp(int(std::ceil(modelHalf * 1.6f / step.units)), 2, 29); // 每族≤29，总计≤58
+        const float extent = cells * step.units;
+        const float centerX = std::round(((low.x() + high.x()) * 0.5f) / step.units) * step.units;
+        const float centerY = std::round(((low.y() + high.y()) * 0.5f) / step.units) * step.units;
+        const float z = low.z() - std::max(0.02f, size.z() * 0.02f);
+        for (int i = -cells; i <= cells; ++i) {
+            const float n = i * step.units;
+            const bool major = i == 0;
+            result.append({QVector3D(centerX + n, centerY - extent, z),
+                           QVector3D(centerX + n, centerY + extent, z), major});
+            result.append({QVector3D(centerX - extent, centerY + n, z),
+                           QVector3D(centerX + extent, centerY + n, z), major});
+        }
+        return result;
+    }
+
     QColor color(const Triangle &triangle) const
     {
         QColor base = colors.value(triangle.id, QColor(89, 157, 205));
@@ -431,13 +536,15 @@ struct SceneData {
             };
             if (gridVisible && hasVisibleGeometry()) {
                 const auto step = gridStep();
-                painter.setPen(QPen(viewMode == SceneView::ViewMode::Engineering ? QColor(110, 128, 148, 55) : QColor(155, 175, 198, 35), 0.7));
-                // 毫米步长映射到归一化XY平面；低透明度叠层不遮盖实体底色。
-                const float extent = step.halfLines * step.units;
-                for (int i = -step.halfLines; i <= step.halfLines && step.units > 0; ++i) {
-                    const float n = i * step.units;
-                    painter.drawLine(project(QVector3D(n, -extent, -1.1f)), project(QVector3D(n, extent, -1.1f)));
-                    painter.drawLine(project(QVector3D(-extent, n, -1.1f)), project(QVector3D(extent, n, -1.1f)));
+                if (!gridDrawnInGl) {
+                    // 软件回退路径没有深度缓冲，网格仍用真实毫米步长的受限地面范围，低透明度避免遮住实体。
+                    painter.setPen(QPen(viewMode == SceneView::ViewMode::Engineering ? QColor(110, 128, 148, 70) : QColor(155, 175, 198, 45), 0.7));
+                    for (const auto &line : gridLines()) {
+                        const QPointF a = project(line.a), b = project(line.b);
+                        if (!std::isfinite(a.x()) || !std::isfinite(a.y())
+                            || !std::isfinite(b.x()) || !std::isfinite(b.y())) continue;
+                        painter.drawLine(a, b);
+                    }
                 }
                 if (step.millimeters > 0) {
                     painter.setPen(viewMode == SceneView::ViewMode::Engineering ? QColor(80, 95, 110) : QColor(155, 174, 196));
@@ -446,6 +553,8 @@ struct SceneData {
                 }
             }
             const auto triad = [&](bool corner) {
+                // 画刷/画笔状态必须在本函数内恢复：后面的三视图面板边框用drawRect，会拿当前画刷填充整块面板。
+                painter.save();
                 QVector3D modelCenter;
                 bool found = false;
                 for (const auto &bound : bounds) {
@@ -464,21 +573,49 @@ struct SceneData {
                     modelCenter = (low + high) / 2;
                 }
                 QPointF origin = corner ? QPointF(port.right() - 52, port.bottom() - 70) : project(modelCenter) + QPointF(48, 0);
-                origin.setX(std::clamp(origin.x(), double(port.left() + 38), double(port.right() - 38)));
-                origin.setY(std::clamp(origin.y(), double(port.top() + 80), double(port.bottom() - 50)));
-                const std::array<QColor, 3> colors = {QColor(233, 90, 85), QColor(65, 181, 113), QColor(78, 144, 234)};
+                // 与网页版一致的画法：固定像素长度、末端实心圆点、加粗字母、按深度排序（近轴后画）。
+                const double axisPixels = 31;
+                origin.setX(std::clamp(origin.x(), double(port.left() + 58), double(port.right() - 58)));
+                origin.setY(std::clamp(origin.y(), double(port.top() + 58), double(port.bottom() - 58)));
+                const std::array<QVector3D, 3> axisVectors = {QVector3D(1, 0, 0), QVector3D(0, 1, 0), QVector3D(0, 0, 1)};
+                const std::array<QColor, 3> colors = {QColor(233, 118, 113), QColor(139, 208, 154), QColor(111, 181, 239)};
                 const std::array<QString, 3> names = {QStringLiteral("X"), QStringLiteral("Y"), QStringLiteral("Z")};
+                QVector3D right, upScreen, forward;
+                cameraBasis(right, upScreen, forward);
+                struct AxisItem { QPointF tip; QColor color; QString name; float depth = 0; };
+                QList<AxisItem> items;
                 for (int axis = 0; axis < 3; ++axis) {
-                    QVector3D delta;
-                    delta[axis] = 0.45f;
-                    QPointF direction = project(modelCenter + delta) - project(modelCenter);
+                    const QPointF direction(QVector3D::dotProduct(axisVectors[axis], right),
+                                            -QVector3D::dotProduct(axisVectors[axis], upScreen));
                     const double length = std::hypot(direction.x(), direction.y());
-                    if (length > 0.5) direction *= 30 / length;
-                    if (std::hypot(direction.x(), direction.y()) < 2) continue;
-                    painter.setPen(QPen(colors[axis], 2));
-                    painter.drawLine(origin, origin + direction);
-                    painter.drawText(origin + direction + QPointF(3, -3), names[axis]);
+                    // 轴几乎与视线平行时不画误导性短线，但仍按深度顺序保留圆点与字母。
+                    const QPointF tip = length > 0.08 ? origin + direction / length * axisPixels : origin;
+                    items.append({tip, colors[axis], names[axis], float(QVector3D::dotProduct(axisVectors[axis], forward))});
                 }
+                std::sort(items.begin(), items.end(), [](const AxisItem &a, const AxisItem &b) { return a.depth < b.depth; });
+                const QColor captionColor = viewMode == SceneView::ViewMode::Engineering ? QColor(35, 57, 75) : QColor(198, 215, 228);
+                for (const auto &item : items) {
+                    painter.setBrush(Qt::NoBrush);
+                    painter.setPen(QPen(item.color, 2));
+                    if (item.tip != origin) painter.drawLine(origin, item.tip);
+                    painter.setBrush(item.color);
+                    painter.drawEllipse(item.tip, 4, 4);
+                    const QPointF outward = item.tip - origin;
+                    const double distanceFromOrigin = std::hypot(outward.x(), outward.y());
+                    const QPointF labelCenter = distanceFromOrigin > 0.5
+                        ? item.tip + outward / distanceFromOrigin * 11.0 : item.tip + QPointF(11, -11);
+                    QRectF labelBox = painter.fontMetrics().boundingRect(item.name);
+                    labelBox.moveCenter(labelCenter);
+                    // 小色块底保证字母在深色和白色工程背景下都可读，同时不与其它轴的字母重叠。
+                    painter.fillRect(labelBox.adjusted(-2, -1, 2, 1),
+                        viewMode == SceneView::ViewMode::Engineering ? QColor(255, 255, 255, 205) : QColor(24, 32, 42, 205));
+                    painter.setPen(item.color);
+                    painter.drawText(labelBox, Qt::AlignCenter, item.name);
+                }
+                painter.setPen(captionColor);
+                painter.drawText(QRectF(port.right() - 116, port.bottom() - 28, 108, 18),
+                    Qt::AlignRight | Qt::AlignVCenter, QStringLiteral("世界 XYZ"));
+                painter.restore();
             };
             if (hasVisibleGeometry() && (axisPlacement == SceneView::AxisPlacement::Corner || axisPlacement == SceneView::AxisPlacement::Both)) triad(true);
             if (hasVisibleGeometry() && (axisPlacement == SceneView::AxisPlacement::Model || axisPlacement == SceneView::AxisPlacement::Both)) triad(false);
@@ -536,8 +673,11 @@ struct SceneData {
             painter.drawText(labelRect, Qt::AlignCenter, measurement.axis);
             labels.append(labelRect);
         }
-        painter.setPen(QColor(215, 225, 235));
-        painter.drawText(12, size.height() - 14, QStringLiteral("拖动旋转三维 · 滚轮缩放 · 单击零件选择 · 双击空白取消选择"));
+        // 三视图每栏很窄：画布内提示会与栏内坐标轴标题重叠，窗口下方已有同一提示。
+        if (viewMode != SceneView::ViewMode::ThreeViews) {
+            painter.setPen(QColor(215, 225, 235));
+            painter.drawText(12, size.height() - 14, QStringLiteral("左键拖动旋转 · 右键拖动平移 · 滚轮缩放 · 短点选择 · 双击空白取消选择"));
+        }
     }
 };
 
@@ -582,14 +722,15 @@ private:
     SceneData *data_;
 };
 
-class GlSurface final : public QOpenGLWidget, protected QOpenGLFunctions {
+class GlSurface final : public QOpenGLWidget, protected QOpenGLExtraFunctions {
 public:
     GlSurface(SceneData *data, QWidget *parent) : QOpenGLWidget(parent), data_(data)
     {
-        // 必须在首次创建上下文/FBO前提出请求；驱动仍可降级，不能把请求当作实测。
+        // 控件自身的默认FBO保持单采样：三维绘制进自建FBO，才能独立控制采样数并如实报告实测值。
         QSurfaceFormat requested = format();
-        requested.setSamples(4);
+        requested.setSamples(0);
         setFormat(requested);
+        setContextMenuPolicy(Qt::NoContextMenu); // 右键用于平移，不弹菜单。
     }
     ~GlSurface() override { cleanup(); }
     std::function<void(const QString &)> failed;
@@ -597,14 +738,16 @@ public:
 protected:
     void initializeGL() override
     {
-        initializeOpenGLFunctions();
+        QOpenGLExtraFunctions::initializeOpenGLFunctions();
+        // 把自建FBO解析到控件FBO需要帧缓冲blit；缺失时退回直接绘制并如实报告，不能假装已超采样。
+        blitSupported_ = QOpenGLFramebufferObject::hasOpenGLFramebufferBlit();
         QObject::disconnect(contextDestructionConnection_);
         contextDestructionConnection_ = QObject::connect(
             context(), &QOpenGLContext::aboutToBeDestroyed, this, [this] { cleanup(); },
             Qt::DirectConnection);
         program_ = std::make_unique<QOpenGLShaderProgram>();
         const char *vertex = "attribute vec3 position; attribute vec3 vertexColor; varying vec3 faceColor; uniform mat4 mvp; void main(){faceColor=vertexColor;gl_Position=mvp*vec4(position,1.0);}";
-        const char *fragment = "varying vec3 faceColor; void main(){gl_FragColor=vec4(faceColor,1.0);}";
+        const char *fragment = "varying vec3 faceColor; uniform float alpha; void main(){gl_FragColor=vec4(faceColor,alpha);}";
         if (!program_->addShaderFromSourceCode(QOpenGLShader::Vertex, vertex)
             || !program_->addShaderFromSourceCode(QOpenGLShader::Fragment, fragment)
             || !program_->link() || !buffer_.create()) {
@@ -620,19 +763,35 @@ protected:
     void paintGL() override
     {
         QPainter painter(this);
-        // Qt的OpenGL画家缓存GL状态；显式原生绘制边界才能在MSAA FBO上恢复正确叠加状态。
+        // Qt的OpenGL画家缓存GL状态；显式原生绘制边界才能在自建FBO上恢复正确叠加状态。
         painter.beginNativePainting();
-        // paintGL进入时Qt已绑定真正的绘制FBO；initializeGL时查询可能仍是默认缓冲。
-        GLint actualSamples = 0;
-        glGetIntegerv(GL_SAMPLES, &actualSamples);
-        data_->renderer = QStringLiteral("原生OpenGL（工程/透视投影与深度缓冲）；MSAA请求4，绘制FBO实际samples=%1%2")
-            .arg(actualSamples).arg(actualSamples > 0 ? QString() : QStringLiteral("（驱动未启用多重采样）"));
+        // 三维绘制进自建FBO：多重采样与超采样都由此控制，解析回控件默认FBO后再画叠加层。
+        const bool useTarget = blitSupported_;
+        const float ratio = useTarget ? renderScale() : float(std::max(1.0, double(devicePixelRatioF())));
+        const QSize pixels(std::max(1, qRound(width() * ratio)), std::max(1, qRound(height() * ratio)));
+        if (useTarget) ensureTarget(pixels);
+        const bool customTarget = useTarget && target_ && target_->isValid();
+        if (customTarget) target_->bind();
+        else if (target_) target_.reset();
+        // 真正生效的采样数取自本次绘制FBO，而不是请求值。
+        const int actualSamples = customTarget ? target_->format().samples() : 0;
+        // 自建FBO必须完整（含深度）才能画实体；状态直接进诊断字符串，避免静默画空。
+        const QString targetStatus = customTarget
+            ? QStringLiteral("，FBO %1x%2 status=0x%3")
+                  .arg(target_->width()).arg(target_->height())
+                  .arg(int(glCheckFramebufferStatus(GL_FRAMEBUFFER)), 0, 16)
+            : QStringLiteral("，使用控件默认FBO");
+        data_->renderer = QStringLiteral("原生OpenGL（工程/透视投影与深度缓冲）；MSAA请求4，绘制FBO实际samples=%1，超采样%2x%3")
+            .arg(actualSamples).arg(double(customTarget ? ratio : float(devicePixelRatioF())), 0, 'f', 1)
+            .arg(actualSamples > 0 ? targetStatus : QStringLiteral("（驱动未提供多重采样FBO）") + targetStatus);
+        data_->gridDrawnInGl = true;
         const QColor background = data_->background();
         glClearColor(float(background.redF()), float(background.greenF()), float(background.blueF()), 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         if (initialized_) {
             glEnable(GL_DEPTH_TEST);
             program_->bind();
+            program_->setUniformValue("alpha", 1.0f);
             buffer_.bind();
             QList<float> vertices;
             vertices.reserve(data_->triangles.size() * 18);
@@ -658,7 +817,6 @@ protected:
             program_->setAttributeBuffer(position, GL_FLOAT, 0, 3, 6 * sizeof(float));
             program_->setAttributeBuffer(color, GL_FLOAT, 3 * sizeof(float), 3, 6 * sizeof(float));
             const auto ports = data_->viewports(size());
-            const float ratio = float(devicePixelRatioF());
             const bool lines = data_->viewMode == SceneView::ViewMode::Front || data_->viewMode == SceneView::ViewMode::Top
                 || data_->viewMode == SceneView::ViewMode::Right || data_->viewMode == SceneView::ViewMode::ThreeViews;
             if (!lines) {
@@ -697,6 +855,35 @@ protected:
                     glDrawArrays(GL_LINES, 0, int(edges.size() / 6));
                 }
             }
+            // 参考网格用真实深度绘制，被实体遮挡；范围受限，深缩放时不再出现放射状长线。
+            const auto gridLineList = data_->gridLines();
+            if (!gridLineList.isEmpty()) {
+                const bool engineering = data_->viewMode == SceneView::ViewMode::Engineering;
+                QList<float> grid;
+                grid.reserve(gridLineList.size() * 12);
+                for (const auto &line : gridLineList) {
+                    const QColor gridColor = engineering
+                        ? (line.major ? QColor(118, 136, 158) : QColor(158, 172, 188))
+                        : (line.major ? QColor(88, 116, 148) : QColor(66, 88, 114));
+                    for (const auto &point : {line.a, line.b}) {
+                        grid.append(point.x()); grid.append(point.y()); grid.append(point.z());
+                        grid.append(float(gridColor.redF())); grid.append(float(gridColor.greenF())); grid.append(float(gridColor.blueF()));
+                    }
+                }
+                buffer_.allocate(grid.constData(), int(grid.size() * sizeof(float)));
+                program_->setUniformValue("alpha", 0.55f);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                for (int panel = 0; panel < ports.size(); ++panel) {
+                    const auto port = ports[panel];
+                    glViewport(qRound(port.x() * ratio), qRound((height() - port.bottom() - 1) * ratio),
+                        qRound(port.width() * ratio), qRound(port.height() * ratio));
+                    program_->setUniformValue("mvp", data_->matrix(port.size(), panel));
+                    glDrawArrays(GL_LINES, 0, int(grid.size() / 6));
+                }
+                program_->setUniformValue("alpha", 1.0f);
+                glDisable(GL_BLEND);
+            }
             glViewport(0, 0, qRound(width() * ratio), qRound(height() * ratio));
             program_->disableAttributeArray(position);
             program_->disableAttributeArray(color);
@@ -704,11 +891,62 @@ protected:
             program_->release();
             glDisable(GL_DEPTH_TEST);
         }
+        if (customTarget) {
+            // 先在相同尺寸下解析多重采样，再用线性缩放写进控件默认FBO，等价网页版的像素比超采样。
+            target_->release();
+            QOpenGLFramebufferObject::blitFramebuffer(resolve_.get(), QRect(QPoint(0, 0), resolve_->size()),
+                target_.get(), QRect(QPoint(0, 0), target_->size()));
+            // 目标传 nullptr 表示控件默认FBO；单采样到单采样的缩放拷贝是标准路径。
+            QOpenGLFramebufferObject::blitFramebuffer(nullptr,
+                QRect(QPoint(0, 0), QSize(std::max(1, qRound(width() * devicePixelRatioF())),
+                                          std::max(1, qRound(height() * devicePixelRatioF())))),
+                resolve_.get(), QRect(QPoint(0, 0), resolve_->size()), GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        }
+        // 叠加层必须画在控件自己的FBO上，显式恢复Qt期望的绑定。
+        glBindFramebuffer(GL_FRAMEBUFFER, GLuint(defaultFramebufferObject()));
         painter.endNativePainting();
         data_->overlay(painter, size());
     }
 
 private:
+    /** 超采样倍率：高DPI屏幕像素已密，只在普通屏幕上额外放大1.5倍，并受纹理尺寸上限约束。 */
+    float renderScale() const
+    {
+        const float dpr = float(std::max(1.0, double(devicePixelRatioF())));
+        const float supersample = dpr < 1.5f ? 1.5f : 1.0f;
+        const float limit = 8192.0f / float(std::max(320, std::max(width(), height())));
+        return std::clamp(dpr * supersample, 1.0f, std::max(1.0f, std::min(2.5f, limit)));
+    }
+
+    /** 按当前像素尺寸准备绘制FBO；先请求4倍多重采样，驱动不支持时退回单采样并如实报告。 */
+    void ensureTarget(const QSize &pixels)
+    {
+        if (target_ && targetSize_ == pixels)
+            return;
+        target_.reset();
+        targetSize_ = QSize();
+        QOpenGLFramebufferObjectFormat format;
+        format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
+        format.setSamples(4);
+        auto candidate = std::make_unique<QOpenGLFramebufferObject>(pixels, format);
+        if (!candidate->isValid()) {
+            QOpenGLFramebufferObjectFormat plain;
+            plain.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
+            candidate = std::make_unique<QOpenGLFramebufferObject>(pixels, plain);
+        }
+        if (!candidate->isValid())
+            return; // 连单采样FBO都建不起来时退回控件默认FBO，renderer字符串会如实报告samples=0。
+        // 解析缓冲与绘制缓冲同尺寸：跨采样数同时又缩放的blit在部分驱动上不可靠，分两步更稳。
+        QOpenGLFramebufferObjectFormat resolved;
+        resolved.setAttachment(QOpenGLFramebufferObject::NoAttachment);
+        auto resolveTarget = std::make_unique<QOpenGLFramebufferObject>(pixels, resolved);
+        if (!resolveTarget->isValid())
+            return;
+        target_ = std::move(candidate);
+        resolve_ = std::move(resolveTarget);
+        targetSize_ = pixels;
+    }
+
     void cleanup()
     {
         // Qt可重建上下文；必须在其有效期间释放GPU资源，而非只等外层控件析构。
@@ -718,6 +956,9 @@ private:
         if (!context())
             return;
         makeCurrent();
+        target_.reset();
+        resolve_.reset();
+        targetSize_ = QSize();
         buffer_.destroy();
         program_.reset();
         initialized_ = false;
@@ -727,6 +968,12 @@ private:
     QMetaObject::Connection contextDestructionConnection_;
     QOpenGLBuffer buffer_;
     std::unique_ptr<QOpenGLShaderProgram> program_;
+    std::unique_ptr<QOpenGLFramebufferObject> target_;
+    /** 多重采样绘制结果的同尺寸单采样副本，供缩放写进控件FBO。 */
+    std::unique_ptr<QOpenGLFramebufferObject> resolve_;
+    QSize targetSize_;
+    /** 是否能用帧缓冲blit把自建FBO写回控件FBO；不支持时直接绘制并如实报告。 */
+    bool blitSupported_ = false;
     bool initialized_ = false;
 };
 
@@ -743,6 +990,9 @@ struct SceneView::Impl {
     QPoint press;
     QPoint last;
     bool pressing = false;
+    /** 右键平移与中键缩放的拖动状态；与左键短点选择互斥。 */
+    bool panning = false;
+    bool zooming = false;
     bool dragged = false;
     bool doubleClick = false;
 };
@@ -803,6 +1053,7 @@ void SceneView::setParts(const QList<Part> &parts)
 {
     // 异步CAD重载取消旧模型的未完成手势，释放事件不能作用于新模型。
     impl_->pressing = impl_->dragged = impl_->doubleClick = false;
+    impl_->panning = impl_->zooming = false;
     auto &data = impl_->data;
     data.triangles.clear();
     data.edges.clear();
@@ -1051,6 +1302,7 @@ void SceneView::setViewMode(ViewMode mode)
 {
     if (mode < ViewMode::Isometric || mode > ViewMode::ThreeViews) return;
     impl_->pressing = impl_->dragged = impl_->doubleClick = false;
+    impl_->panning = impl_->zooming = false;
     impl_->data.viewMode = mode;
     fitAll();
 }
@@ -1182,11 +1434,24 @@ long double SceneView::gridStepMillimeters() const
 }
 int SceneView::gridLineCount() const
 {
-    const auto step = impl_->data.gridStep();
-    return impl_->data.gridVisible && impl_->data.hasVisibleGeometry() && step.units > 0 ? 2 * (2 * step.halfLines + 1) : 0;
+    // 受限地面网格的实际线数；与渲染同一份几何，关闭网格或三视图时为零。
+    return impl_->data.gridLines().size();
+}
+std::array<long double, 2> SceneView::gridExtentMillimeters() const
+{
+    const auto lines = impl_->data.gridLines();
+    if (lines.isEmpty()) return {0, 0};
+    // 任一条线到中心的距离就是方阵半宽，用源毫米比例换算回毫米供核对网格不会无限延伸。
+    long double half = 0;
+    for (const auto &line : lines)
+        half = std::max(half, static_cast<long double>((line.b - line.a).length()) / 2);
+    const long double millimeters = half * impl_->data.millimetersPerUnit;
+    return std::isfinite(millimeters) ? std::array<long double, 2>{millimeters, millimeters}
+                                      : std::array<long double, 2>{0, 0};
 }
 double SceneView::explosionFraction() const { return impl_->data.explosionFraction; }
 double SceneView::pullFraction() const { return impl_->data.pullFraction; }
+QVector3D SceneView::cameraTarget() const { return impl_->data.target; }
 
 QString SceneView::rendererDescription() const
 {
@@ -1205,6 +1470,7 @@ bool SceneView::eventFilter(QObject *watched, QEvent *event)
         return QWidget::eventFilter(watched, event);
     if (event->type() == QEvent::Hide || event->type() == QEvent::UngrabMouse || event->type() == QEvent::WindowDeactivate) {
         impl_->pressing = impl_->dragged = impl_->doubleClick = false;
+        impl_->panning = impl_->zooming = false;
         return QWidget::eventFilter(watched, event);
     }
     if (event->type() == QEvent::MouseButtonPress) {
@@ -1212,10 +1478,33 @@ bool SceneView::eventFilter(QObject *watched, QEvent *event)
         if (mouse->button() == Qt::LeftButton) {
             impl_->press = impl_->last = mouse->position().toPoint();
             impl_->pressing = true;
+            impl_->panning = false;
+            impl_->zooming = false;
             impl_->dragged = false;
             impl_->doubleClick = false;
             return true;
         }
+        // 与网页版一致：右键平移、中键缩放；两者都不触发选择，也不能被当成短点。
+        if (mouse->button() == Qt::RightButton || mouse->button() == Qt::MiddleButton) {
+            impl_->press = impl_->last = mouse->position().toPoint();
+            impl_->panning = mouse->button() == Qt::RightButton;
+            impl_->zooming = mouse->button() == Qt::MiddleButton;
+            impl_->pressing = false;
+            impl_->dragged = false;
+            impl_->doubleClick = false;
+            return true;
+        }
+    } else if (event->type() == QEvent::MouseMove && (impl_->panning || impl_->zooming)) {
+        auto *mouse = static_cast<QMouseEvent *>(event);
+        const QPoint current = mouse->position().toPoint();
+        const QPointF delta = QPointF(current - impl_->last);
+        if (impl_->panning)
+            impl_->data.panByPixels(delta, impl_->surface->size());
+        else if (delta.y() != 0)
+            impl_->data.zoomBySteps(-delta.y() * 0.01);
+        impl_->last = current;
+        impl_->surface->update();
+        return true;
     } else if (event->type() == QEvent::MouseMove && impl_->pressing) {
         auto *mouse = static_cast<QMouseEvent *>(event);
         const QPoint current = mouse->position().toPoint();
@@ -1233,6 +1522,13 @@ bool SceneView::eventFilter(QObject *watched, QEvent *event)
         return true;
     } else if (event->type() == QEvent::MouseButtonRelease) {
         auto *mouse = static_cast<QMouseEvent *>(event);
+        if ((mouse->button() == Qt::RightButton && impl_->panning)
+            || (mouse->button() == Qt::MiddleButton && impl_->zooming)) {
+            // 右键/中键拖动结束不产生选择或清选择，也不进入短点判定。
+            impl_->panning = impl_->zooming = false;
+            impl_->pressing = impl_->dragged = false;
+            return true;
+        }
         if (mouse->button() == Qt::LeftButton && impl_->pressing) {
             impl_->pressing = false;
             const bool doubleClick = impl_->doubleClick;

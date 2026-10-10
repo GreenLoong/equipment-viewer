@@ -7,6 +7,7 @@
 #include <QPointF>
 #include <QWidget>
 #include <QColor>
+#include <QVector3D>
 #include <array>
 #include <functional>
 #include <memory>
@@ -73,12 +74,17 @@ public:
     bool gridVisible() const;
     /** 返回依据源尺度选出的网格毫米步长；无有效场景时为零。 */
     long double gridStepMillimeters() const;
-    /** 返回每个视图实际参考网格线数（最多58）；关闭或无有效几何时为零。 */
+    /** 返回每个视图实际参考网格线数（受限地面网格，最多58）；关闭或无有效几何时为零。 */
     int gridLineCount() const;
+    /** 返回参考网格方阵的半宽（毫米，X/Y相同）；关闭、三视图或地面与视线平行时为零。
+     *  该值随可见几何收敛，不随缩放无限延伸，用于核对网格不会重新变成无限平面。 */
+    std::array<long double, 2> gridExtentMillimeters() const;
     /** 返回当前0..1整体显示伸展比例。 */
     double explosionFraction() const;
     /** 返回当前0..1选中件额外拉远比例。 */
     double pullFraction() const;
+    /** 返回当前相机观察点（显示坐标系）；右键平移只改这里，零件源位置与尺寸不变。 */
+    QVector3D cameraTarget() const;
     /** 返回当前渲染方式及回退原因。 */
     QString rendererDescription() const;
     /** 当前画面的毫米标注；空axis为参考比例尺，XYZ为选中/唯一可见件原包络或整体显示包络。
@@ -94,7 +100,9 @@ public:
     };
     /** 返回当前可见标注副本；空场景、范围错误或全部隐藏时为空。 */
     QList<MeasurementAnnotation> measurementAnnotations() const;
-    /** 单击零件回传ID，空白单击无动作；空白双击回传空ID。 */
+    /** 单击零件回传ID，空白单击无动作；空白双击回传空ID。
+     *  鼠标约定与网页版一致：左键拖动旋转，右键拖动平移（正交视图也可用），
+     *  中键拖动缩放，滚轮缩放；右键与中键拖动都不改变选择。 */
     std::function<void(const QString &)> onPartPicked;
 
 protected:
