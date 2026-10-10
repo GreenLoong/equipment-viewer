@@ -141,4 +141,12 @@ if(BUILD_TESTING)
     target_link_libraries(r07_window_tests PRIVATE equipment_window Qt6::Test)
     add_test(NAME r07_window_interaction COMMAND r07_window_tests -platform offscreen)
     set_tests_properties(r07_window_interaction PROPERTIES TIMEOUT 60)
+    # 重构树新增：方向轴投影与网页版一致性（原工程 tests 未改，故只在本目录注册）。
+    add_executable(axis_gizmo_tests "tests/axis_gizmo_tests.cpp")
+    target_link_libraries(axis_gizmo_tests PRIVATE scene_view Qt6::Test)
+    add_test(NAME axis_gizmo_projection COMMAND axis_gizmo_tests -platform offscreen)
+    set_tests_properties(axis_gizmo_projection PROPERTIES TIMEOUT 60)
+    # 方向轴截图工具：不加入CTest，由验收人用 -platform windows 原生运行并人工核对。
+    add_executable(axis_gizmo_shot "tests/axis_gizmo_shot.cpp")
+    target_link_libraries(axis_gizmo_shot PRIVATE scene_view Qt6::Test)
 endif()

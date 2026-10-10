@@ -68,6 +68,16 @@ public:
     AxisPlacement axisPlacement() const;
     /** 返回实际展开轴X/Y/Z，自动选项已解析。 */
     ExplodeAxis resolvedExplodeAxis() const;
+    /** 方向轴的画布几何：原点与三根世界轴端点（画布逻辑像素，端点已含真实投影压缩）。 */
+    struct AxisGizmo {
+        QPointF origin;
+        std::array<QPointF, 3> tips{};
+        bool valid = false;
+    };
+    /** 返回角落(true)或模型旁(false)方向轴的当前几何副本；无可见零件时 valid=false。
+     *  panel 选择三视图分栏（0 正视、1 俯视、2 右视），其它视图模式忽略该参数；
+     *  供验收与诊断读取，不改变绘制状态。 */
+    AxisGizmo axisGizmo(bool corner, int panel = 0) const;
     /** 返回XYZ包络读数开关；参考比例尺独立保留。 */
     bool dimensionsVisible() const;
     /** 返回毫米网格叠层开关；步长按源尺度取1/2/5并在角落标明。 */

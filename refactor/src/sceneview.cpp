@@ -163,6 +163,36 @@ void appendColoredVertex(QList<float> &buffer, const QVector3D &point, const QCo
     buffer.append(float(color.blueF()));
 }
 
+/** 一根世界轴在画面上的投影；direction 未归一化，其长度就是真实压缩后的可见长度。 */
+struct ProjectedAxis {
+    QPointF direction;   // x 向右、y 向下，单位与像素半径同量纲
+    QColor color;
+    QString name;
+    float viewDepth = 0; // 相机空间 z：越大越深入屏幕，用于近轴后画
+};
+
+/**
+ * 计算三根世界轴在给定相机基向量下的真实投影，按 X、Y、Z 顺序返回。
+ * 与网页版一致：不做归一化，轴与视线接近平行时长度自然压到零，只留圆点和字母；
+ * 归一化会把接近零的投影放大成噪声，导致方向在 0°/180° 之间跳变。
+ */
+QList<ProjectedAxis> projectedAxes(const QVector3D &right, const QVector3D &upScreen,
+                                   const QVector3D &forward)
+{
+    static const std::array<QVector3D, 3> axes = {QVector3D(1, 0, 0), QVector3D(0, 1, 0),
+                                                  QVector3D(0, 0, 1)};
+    const auto &colors = axisGizmoColors();
+    const auto &names = axisNames();
+    QList<ProjectedAxis> result;
+    for (int axis = 0; axis < 3; ++axis) {
+        result.append({QPointF(QVector3D::dotProduct(axes[axis], right),
+                               -QVector3D::dotProduct(axes[axis], upScreen)),
+                       colors[axis], names[axis],
+                       float(QVector3D::dotProduct(axes[axis], forward))});
+    }
+    return result;
+}
+
 struct SceneData {
     QList<Triangle> triangles;
     QList<SceneEdge> edges;
@@ -397,16 +427,139 @@ struct SceneData {
         return projection * view;
     }
 
-    /** 相机基向量；平移与方向轴共用，避免各自重算球坐标导致不一致。 */
-    void cameraBasis(QVector3D &right, QVector3D &upScreen, QVector3D &forward) const
+    /**
+     * 指定分栏的相机基向量。
+     * 三视图各栏视线不同，方向轴必须用本栏的基向量，不能三栏共用首栏朝向。
+     */
+    void cameraBasisAt(int panel, QVector3D &right, QVector3D &upScreen, QVector3D &forward) const
     {
-        // 三视图按首栏（正视）取朝向，与视图矩阵的分栏解析同一函数。
-        const CameraOrientation orientation = cameraOrientation(viewMode, 0, yaw, pitch);
+        const CameraOrientation orientation = cameraOrientation(viewMode, panel, yaw, pitch);
         forward = -orientation.direction;
         right = QVector3D::crossProduct(forward, orientation.up);
         if (right.lengthSquared() < 1e-12f) right = QVector3D(1, 0, 0);
         right.normalize();
         upScreen = QVector3D::crossProduct(right, forward).normalized();
+    }
+
+    /** 单栏相机基向量；平移与方向轴共用，避免各自重算球坐标导致不一致。 */
+    void cameraBasis(QVector3D &right, QVector3D &upScreen, QVector3D &forward) const
+    {
+        cameraBasisAt(0, right, upScreen, forward);
+    }
+
+    /** 角落方向轴半径（像素）：与网页版 120 像素画布上的 39 像素半径一致。 */
+    static constexpr double cornerAxisRadius = 39;
+    /** 模型旁方向轴半径（像素）：对应网页版长度约 55 像素的箭头。 */
+    static constexpr double modelAxisRadius = 55;
+
+    /** 方向轴几何：原点、三轴端点（端点 = 原点 + 真实投影 × 半径）与按轴序排列的投影信息。 */
+    struct GizmoGeometry {
+        QPointF origin;
+        std::array<QPointF, 3> tips{};
+        QList<ProjectedAxis> axes;
+        double radius = 0;
+        bool valid = false;
+    };
+
+    /** 模型旁方向轴落点：选中件的显示中心，否则整体可见显示包络中心，再投影到画布。 */
+    QPointF gizmoModelPoint(const QRect &port, int panel) const
+    {
+        QVector3D center;
+        bool found = false;
+        for (const auto &bound : bounds) {
+            if (hidden.contains(bound.id) || bound.id != selected) continue;
+            center = (bound.low + bound.high) / 2 + offsets.value(bound.id);
+            found = true;
+            break;
+        }
+        if (!found) {
+            // 无选中件时用整体可见显示包络；两者都不可用时中心退回原点。
+            QVector3D low(100, 100, 100), high(-100, -100, -100);
+            if (visibleDisplayBox(low, high)) center = (low + high) / 2;
+            else center = QVector3D();
+        }
+        const QVector4D clip = matrix(port.size(), panel) * QVector4D(center, 1);
+        if (!std::isfinite(clip.w()) || clip.w() <= 0) return port.center();
+        return canvasPoint(port, clip.toVector3DAffine());
+    }
+
+    /**
+     * 计算方向轴几何；绘制与验收共用同一份结果，避免两边各算一套投影。
+     * 角落轴固定在右下角并留出半径与字母边距；模型旁轴跟随模型中心。
+     */
+    GizmoGeometry axisGeometry(bool corner, const QRect &port, int panel) const
+    {
+        GizmoGeometry geometry;
+        QVector3D right, upScreen, forward;
+        cameraBasisAt(panel, right, upScreen, forward);
+        geometry.axes = projectedAxes(right, upScreen, forward);
+        geometry.radius = corner ? cornerAxisRadius : modelAxisRadius;
+        if (corner) {
+            QPointF origin(port.right() - 62, port.bottom() - 82);
+            origin.setX(std::clamp(origin.x(), double(port.left() + geometry.radius + 16),
+                                   double(port.right() - geometry.radius - 16)));
+            origin.setY(std::clamp(origin.y(), double(port.top() + geometry.radius + 16),
+                                   double(port.bottom() - geometry.radius - 16)));
+            geometry.origin = origin;
+        } else {
+            geometry.origin = gizmoModelPoint(port, panel) + QPointF(48, 0);
+        }
+        // 端点直接用真实投影：轴与视线平行时不额外补长度，自然压成圆点。
+        for (int axis = 0; axis < 3; ++axis)
+            geometry.tips[axis] = geometry.origin + geometry.axes[axis].direction * geometry.radius;
+        geometry.valid = true;
+        return geometry;
+    }
+
+    /**
+     * 画一组方向轴：杆长取真实投影长度（不再用固定像素长度），末端实心圆点，
+     * 字母贴在端点右上方；尺寸与网页版一致（半径 39 像素、圆点 4 像素、2 像素杆、加粗字母）。
+     * withArrowheads 用于模型旁方向轴，按网页版 ArrowHelper 比例改画箭头。
+     */
+    void drawGizmo(QPainter &painter, const GizmoGeometry &geometry, bool withArrowheads,
+                   bool lightBackground) const
+    {
+        // 与网页版按相机空间 z 排序等价：远端先画，靠近观察者的轴最后画。
+        QList<int> order = {0, 1, 2};
+        std::sort(order.begin(), order.end(), [&geometry](int a, int b) {
+            return geometry.axes[a].viewDepth > geometry.axes[b].viewDepth;
+        });
+        QFont font = painter.font();
+        font.setBold(true);
+        painter.setFont(font);
+        for (int index : order) {
+            const ProjectedAxis &axis = geometry.axes[index];
+            const QPointF tip = geometry.tips[index];
+            const double length = QLineF(geometry.origin, tip).length();
+            const bool drawn = length > 0.5;
+            painter.setBrush(Qt::NoBrush);
+            painter.setPen(QPen(axis.color, 2));
+            if (drawn && !withArrowheads) {
+                painter.drawLine(geometry.origin, tip);
+            } else if (drawn) {
+                const QPointF unit = (tip - geometry.origin) / length;
+                const QPointF headBase = tip - unit * std::max(6.0, geometry.radius * 0.14);
+                const QPointF perpendicular(-unit.y(), unit.x());
+                const double headRadius = std::max(3.0, geometry.radius * 0.075);
+                painter.drawLine(geometry.origin, headBase);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(axis.color);
+                painter.drawPolygon(QPolygonF({tip, headBase + perpendicular * headRadius,
+                                               headBase - perpendicular * headRadius}));
+            }
+            if (!withArrowheads) {
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(axis.color);
+                painter.drawEllipse(tip, 4, 4);
+            }
+            // 字母与网页版同样贴在端点右上方；轴被压短时随端点移动，不再固定在原点旁。
+            QRectF labelBox = painter.fontMetrics().boundingRect(axis.name);
+            labelBox.moveBottomLeft(tip + QPointF(5, -5));
+            painter.fillRect(labelBox.adjusted(-2, -1, 2, 1),
+                lightBackground ? QColor(255, 255, 255, 205) : QColor(24, 32, 42, 205));
+            painter.setPen(axis.color);
+            painter.drawText(labelBox, Qt::AlignCenter, axis.name);
+        }
     }
 
     /** 屏幕像素到世界单位的换算；透视与正交都用同一半高关系，保证拖动跟随光标。 */
@@ -604,73 +757,24 @@ struct SceneData {
                 }
                 if (step.millimeters > 0) {
                     painter.setPen(viewMode == SceneView::ViewMode::Engineering ? QColor(80, 95, 110) : QColor(155, 174, 196));
-                    painter.drawText(QRect(port.left() + 8, port.bottom() - 134, port.width() - 16, 20), Qt::AlignRight,
+                    // 上移到 -154：右下角方向轴半径 39 像素，避免网格步长文字与方向轴字母重叠。
+                    painter.drawText(QRect(port.left() + 8, port.bottom() - 154, port.width() - 16, 20), Qt::AlignRight,
                         QStringLiteral("网格步长 ") + NumericUtil::millimeterText(step.millimeters));
                 }
             }
             const auto triad = [&](bool corner) {
                 // 画刷/画笔状态必须在本函数内恢复：后面的三视图面板边框用drawRect，会拿当前画刷填充整块面板。
                 painter.save();
-                QVector3D modelCenter;
-                bool found = false;
-                for (const auto &bound : bounds) {
-                    if (hidden.contains(bound.id)) continue;
-                    if (bound.id == selected) { modelCenter = (bound.low + bound.high) / 2 + offsets.value(bound.id); found = true; break; }
+                // 方向轴用本栏自己的相机基向量，三视图各栏的 XYZ 与所看到的视线一致；
+                // 几何与 SceneView::axisGizmo() 共用同一份计算，验收不会与绘制分叉。
+                const GizmoGeometry geometry = axisGeometry(corner, port, panel);
+                const bool lightBackground = viewMode == SceneView::ViewMode::Engineering;
+                drawGizmo(painter, geometry, !corner, lightBackground);
+                if (corner) {
+                    painter.setPen(lightBackground ? QColor(35, 57, 75) : QColor(198, 215, 228));
+                    painter.drawText(QRectF(port.right() - 116, port.bottom() - 28, 108, 18),
+                        Qt::AlignRight | Qt::AlignVCenter, QStringLiteral("世界 XYZ"));
                 }
-                if (!found) {
-                    QVector3D low(100, 100, 100), high(-100, -100, -100);
-                    for (const auto &bound : bounds) {
-                        if (hidden.contains(bound.id)) continue;
-                        for (int axis = 0; axis < 3; ++axis) {
-                            low[axis] = std::min(low[axis], bound.low[axis] + offsets.value(bound.id)[axis]);
-                            high[axis] = std::max(high[axis], bound.high[axis] + offsets.value(bound.id)[axis]);
-                        }
-                    }
-                    modelCenter = (low + high) / 2;
-                }
-                QPointF origin = corner ? QPointF(port.right() - 52, port.bottom() - 70) : project(modelCenter) + QPointF(48, 0);
-                // 与网页版一致的画法：固定像素长度、末端实心圆点、加粗字母、按深度排序（近轴后画）。
-                const double axisPixels = 31;
-                origin.setX(std::clamp(origin.x(), double(port.left() + 58), double(port.right() - 58)));
-                origin.setY(std::clamp(origin.y(), double(port.top() + 58), double(port.bottom() - 58)));
-                const std::array<QVector3D, 3> axisVectors = {QVector3D(1, 0, 0), QVector3D(0, 1, 0), QVector3D(0, 0, 1)};
-                const auto &colors = axisGizmoColors();
-                const auto &names = axisNames();
-                QVector3D right, upScreen, forward;
-                cameraBasis(right, upScreen, forward);
-                struct AxisItem { QPointF tip; QColor color; QString name; float depth = 0; };
-                QList<AxisItem> items;
-                for (int axis = 0; axis < 3; ++axis) {
-                    const QPointF direction(QVector3D::dotProduct(axisVectors[axis], right),
-                                            -QVector3D::dotProduct(axisVectors[axis], upScreen));
-                    const double length = std::hypot(direction.x(), direction.y());
-                    // 轴几乎与视线平行时不画误导性短线，但仍按深度顺序保留圆点与字母。
-                    const QPointF tip = length > 0.08 ? origin + direction / length * axisPixels : origin;
-                    items.append({tip, colors[axis], names[axis], float(QVector3D::dotProduct(axisVectors[axis], forward))});
-                }
-                std::sort(items.begin(), items.end(), [](const AxisItem &a, const AxisItem &b) { return a.depth < b.depth; });
-                const QColor captionColor = viewMode == SceneView::ViewMode::Engineering ? QColor(35, 57, 75) : QColor(198, 215, 228);
-                for (const auto &item : items) {
-                    painter.setBrush(Qt::NoBrush);
-                    painter.setPen(QPen(item.color, 2));
-                    if (item.tip != origin) painter.drawLine(origin, item.tip);
-                    painter.setBrush(item.color);
-                    painter.drawEllipse(item.tip, 4, 4);
-                    const QPointF outward = item.tip - origin;
-                    const double distanceFromOrigin = std::hypot(outward.x(), outward.y());
-                    const QPointF labelCenter = distanceFromOrigin > 0.5
-                        ? item.tip + outward / distanceFromOrigin * 11.0 : item.tip + QPointF(11, -11);
-                    QRectF labelBox = painter.fontMetrics().boundingRect(item.name);
-                    labelBox.moveCenter(labelCenter);
-                    // 小色块底保证字母在深色和白色工程背景下都可读，同时不与其它轴的字母重叠。
-                    painter.fillRect(labelBox.adjusted(-2, -1, 2, 1),
-                        viewMode == SceneView::ViewMode::Engineering ? QColor(255, 255, 255, 205) : QColor(24, 32, 42, 205));
-                    painter.setPen(item.color);
-                    painter.drawText(labelBox, Qt::AlignCenter, item.name);
-                }
-                painter.setPen(captionColor);
-                painter.drawText(QRectF(port.right() - 116, port.bottom() - 28, 108, 18),
-                    Qt::AlignRight | Qt::AlignVCenter, QStringLiteral("世界 XYZ"));
                 painter.restore();
             };
             if (hasVisibleGeometry() && (axisPlacement == SceneView::AxisPlacement::Corner || axisPlacement == SceneView::AxisPlacement::Both)) triad(true);
@@ -1484,6 +1588,23 @@ std::array<long double, 2> SceneView::gridExtentMillimeters() const
 double SceneView::explosionFraction() const { return impl_->data.explosionFraction; }
 double SceneView::pullFraction() const { return impl_->data.pullFraction; }
 QVector3D SceneView::cameraTarget() const { return impl_->data.target; }
+
+SceneView::AxisGizmo SceneView::axisGizmo(bool corner, int panel) const
+{
+    SceneView::AxisGizmo result;
+    const QSize size = impl_->surface->size();
+    if (size.width() < 240 || size.height() < 180 || !impl_->data.hasVisibleGeometry())
+        return result;
+    // 三视图按分栏宽度切开画布，与绘制使用同一分栏几何；其它模式只有一栏。
+    const auto ports = impl_->data.viewports(size);
+    const int index = std::clamp(panel, 0, int(ports.size()) - 1);
+    const SceneData::GizmoGeometry geometry =
+        impl_->data.axisGeometry(corner, ports[index], index);
+    result.origin = geometry.origin;
+    result.tips = geometry.tips;
+    result.valid = geometry.valid;
+    return result;
+}
 
 QString SceneView::rendererDescription() const
 {

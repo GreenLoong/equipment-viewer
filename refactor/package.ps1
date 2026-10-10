@@ -67,7 +67,8 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'samples') -Destination (Join-Pat
 
 $documentation = Join-Path $target '文档'
 New-Item -ItemType Directory -Path $documentation -Force | Out-Null
-Copy-Item -Path (Join-Path $refactorRoot 'docs\package\*.md') -Destination $documentation -Force
+# 文档与配图整目录复制（README、使用说明、技术说明、验证记录、故障示图）。
+Copy-Item -Path (Join-Path $refactorRoot 'docs\package\*') -Destination $documentation -Force
 Copy-Item -LiteralPath (Join-Path $refactorRoot 'docs\dedup-report.md') `
     -Destination (Join-Path $documentation '04-重复实现审查与去重报告.md') -Force
 Copy-Item -LiteralPath (Join-Path $refactorRoot 'resources\app-icon-preview.png') `

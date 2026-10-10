@@ -10,7 +10,11 @@ foreach ($relative in @('tests', 'tools')) {
     else { $files = Get-ChildItem (Join-Path $refactorRoot 'tools') -File -Filter environment_probe.cpp }
     foreach ($file in $files) {
         $original = Join-Path (Join-Path $projectRoot $relative) $file.Name
-        if (-not (Test-Path -LiteralPath $original -PathType Leaf)) { throw "根目录缺少对应文件：$original" }
+        if (-not (Test-Path -LiteralPath $original -PathType Leaf)) {
+            # 重构树新增的测试（原工程没有对应文件）单独列出，不参与逐字节比对。
+            Write-Output "refactor-only: $relative/$($file.Name)"
+            continue
+        }
         $copiedHash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
         $originalHash = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
         $checked++
