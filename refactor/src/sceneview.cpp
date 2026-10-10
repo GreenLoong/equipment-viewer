@@ -504,6 +504,77 @@ struct SceneData {
     static constexpr double cornerAxisRadius = 39;
     /** 模型旁方向轴半径（像素）：对应网页版长度约 55 像素的箭头。 */
     static constexpr double modelAxisRadius = 55;
+    /** 角落方向轴小方框半边长（像素）：容纳箭头并留出字母边距。 */
+    static constexpr double cornerAxisBoxHalf = cornerAxisRadius + 8;
+    /** 原生路径是否已用三维箭头画过角落方向轴；画过后叠加层只补字母与标题。 */
+    bool gizmoDrawnInGl = false;
+
+    /** 角落方向轴的原点：右下角固定位置并保持整框在画布内。 */
+    QPointF cornerGizmoOrigin(const QRect &port) const
+    {
+        QPointF origin(port.right() - 62, port.bottom() - 82);
+        origin.setX(std::clamp(origin.x(), double(port.left() + cornerAxisBoxHalf),
+                               double(port.right() - cornerAxisBoxHalf)));
+        origin.setY(std::clamp(origin.y(), double(port.top() + cornerAxisBoxHalf),
+                               double(port.bottom() - cornerAxisBoxHalf)));
+        return origin;
+    }
+
+    /**
+     * 生成一根方向轴箭头（世界空间几何 + 顶点光照，位置按相机基投影到角落方框的NDC）。
+     * 与模型使用同一 keyLight 与超采样：圆柱杆取径向法线、锥头取斜面法线，
+     * 因此方向轴也有与实体一致的明暗过渡，而不是单色二维线段。
+     */
+    void appendAxisArrow(QList<float> &out, const QVector3D &axis, const QVector3D &right,
+                         const QVector3D &upScreen, const QVector3D &forward, const QColor &color,
+                         double halfExtent) const
+    {
+        const QVector3D e = axis.normalized();
+        QVector3D radialBase = QVector3D::crossProduct(e, QVector3D(0, 0, 1));
+        if (radialBase.lengthSquared() < 1e-6f)
+            radialBase = QVector3D::crossProduct(e, QVector3D(0, 1, 0));
+        radialBase.normalize();
+        const QVector3D radialSecond = QVector3D::crossProduct(e, radialBase).normalized();
+        constexpr int segments = 14;
+        const auto appendVertex = [&](const QVector3D &position, const QVector3D &normal) {
+            const QVector3D camera(QVector3D::dotProduct(position, right),
+                                   QVector3D::dotProduct(position, upScreen),
+                                   -QVector3D::dotProduct(position, forward));
+            const float light = vertexLight(normal);
+            out.append(float(camera.x() / halfExtent));
+            out.append(float(camera.y() / halfExtent));
+            out.append(std::clamp(float(-camera.z() / halfExtent), -1.0f, 1.0f));
+            out.append(float(color.redF()) * light);
+            out.append(float(color.greenF()) * light);
+            out.append(float(color.blueF()) * light);
+        };
+        const auto radialAt = [&](int index) {
+            const double angle = index * 2 * pi / segments;
+            return radialBase * float(std::cos(angle)) + radialSecond * float(std::sin(angle));
+        };
+        const auto ringPoint = [&](double along, double radius, int index) {
+            return e * float(along) + radialAt(index) * float(radius);
+        };
+        // 杆：0 → 0.72 等半径（法线为径向）；锥台：0.72 → 0.95 收成尖点（法线为斜面）。
+        const double shaftEnd = 0.72, tipEnd = 0.95, shaftRadius = 0.05, headRadius = 0.13;
+        const float coneSlope = float(headRadius / (tipEnd - shaftEnd));
+        for (int index = 0; index < segments; ++index) {
+            const int next = (index + 1) % segments;
+            const QVector3D shaftA = ringPoint(0, shaftRadius, index), shaftB = ringPoint(0, shaftRadius, next);
+            const QVector3D shaftTopA = ringPoint(shaftEnd, shaftRadius, index), shaftTopB = ringPoint(shaftEnd, shaftRadius, next);
+            appendVertex(shaftA, radialAt(index)); appendVertex(shaftB, radialAt(next)); appendVertex(shaftTopB, radialAt(next));
+            appendVertex(shaftA, radialAt(index)); appendVertex(shaftTopB, radialAt(next)); appendVertex(shaftTopA, radialAt(index));
+            const QVector3D headBaseA = ringPoint(shaftEnd, headRadius, index), headBaseB = ringPoint(shaftEnd, headRadius, next);
+            const QVector3D tip = e * float(tipEnd);
+            const QVector3D headNormalA = (radialAt(index) + e * coneSlope).normalized();
+            const QVector3D headNormalB = (radialAt(next) + e * coneSlope).normalized();
+            appendVertex(headBaseA, headNormalA); appendVertex(headBaseB, headNormalB); appendVertex(tip, e);
+            // 杆底与锥头底面：补片避免沿轴线看进去时是空心。
+            const QVector3D center(0, 0, 0), headCenter = e * float(shaftEnd);
+            appendVertex(center, -e); appendVertex(shaftB, -e); appendVertex(shaftA, -e);
+            appendVertex(headCenter, -e); appendVertex(headBaseA, -e); appendVertex(headBaseB, -e);
+        }
+    }
 
     /** 方向轴几何：原点、三轴端点（端点 = 原点 + 真实投影 × 半径）与按轴序排列的投影信息。 */
     struct GizmoGeometry {
@@ -548,12 +619,7 @@ struct SceneData {
         geometry.axes = projectedAxes(right, upScreen, forward);
         geometry.radius = corner ? cornerAxisRadius : modelAxisRadius;
         if (corner) {
-            QPointF origin(port.right() - 62, port.bottom() - 82);
-            origin.setX(std::clamp(origin.x(), double(port.left() + geometry.radius + 16),
-                                   double(port.right() - geometry.radius - 16)));
-            origin.setY(std::clamp(origin.y(), double(port.top() + geometry.radius + 16),
-                                   double(port.bottom() - geometry.radius - 16)));
-            geometry.origin = origin;
+            geometry.origin = cornerGizmoOrigin(port);
         } else {
             geometry.origin = gizmoModelPoint(port, panel) + QPointF(48, 0);
         }
@@ -587,9 +653,11 @@ struct SceneData {
             const bool drawn = length > 0.5;
             painter.setBrush(Qt::NoBrush);
             painter.setPen(QPen(axis.color, 2));
-            if (drawn && !withArrowheads) {
+            // 原生路径已用三维箭头画过方向轴时（角落与模型旁都算），叠加层只补字母。
+            const bool arrowsDrawnInGl = gizmoDrawnInGl;
+            if (!arrowsDrawnInGl && drawn && !withArrowheads) {
                 painter.drawLine(geometry.origin, tip);
-            } else if (drawn) {
+            } else if (!arrowsDrawnInGl && drawn) {
                 const QPointF unit = (tip - geometry.origin) / length;
                 const QPointF headBase = tip - unit * std::max(6.0, geometry.radius * 0.14);
                 const QPointF perpendicular(-unit.y(), unit.x());
@@ -600,7 +668,7 @@ struct SceneData {
                 painter.drawPolygon(QPolygonF({tip, headBase + perpendicular * headRadius,
                                                headBase - perpendicular * headRadius}));
             }
-            if (!withArrowheads) {
+            if (!withArrowheads && !arrowsDrawnInGl) {
                 painter.setPen(Qt::NoPen);
                 painter.setBrush(axis.color);
                 painter.drawEllipse(tip, 4, 4);
@@ -913,6 +981,8 @@ public:
 protected:
     void paintEvent(QPaintEvent *) override
     {
+        // 软件回退路径没有三维箭头，方向轴仍按二维线段绘制。
+        data_->gizmoDrawnInGl = false;
         QPainter painter(this);
         painter.fillRect(rect(), data_->background());
         painter.setRenderHint(QPainter::Antialiasing);
@@ -1082,6 +1152,57 @@ protected:
                 drawPanels(ports, ratio, GL_LINES, int(grid.size() / 6));
                 program_->setUniformValue("alpha", 1.0f);
                 glDisable(GL_BLEND);
+            }
+            // 角落方向轴：与实体同一顶点光照和采样，画在右下角小方框里；
+            // 画过后叠加层只补字母与标题，不再重复画二维线段。
+            data_->gizmoDrawnInGl = false;
+            const bool cornerWanted = data_->axisPlacement == SceneView::AxisPlacement::Corner
+                || data_->axisPlacement == SceneView::AxisPlacement::Both;
+            const bool modelWanted = data_->axisPlacement == SceneView::AxisPlacement::Model
+                || data_->axisPlacement == SceneView::AxisPlacement::Both;
+            for (int panel = 0; (cornerWanted || modelWanted) && panel < ports.size(); ++panel) {
+                const QRect panelPort = ports[panel];
+                QVector3D gizmoRight, gizmoUp, gizmoForward;
+                data_->cameraBasisAt(panel, gizmoRight, gizmoUp, gizmoForward);
+                struct Placement { QPointF origin; double radius; };
+                QList<Placement> placements;
+                if (cornerWanted)
+                    placements.append({data_->cornerGizmoOrigin(panelPort), SceneData::cornerAxisRadius});
+                if (modelWanted)
+                    placements.append({data_->gizmoModelPoint(panelPort, panel) + QPointF(48, 0),
+                                       SceneData::modelAxisRadius});
+                for (const auto &placement : placements) {
+                    const double half = placement.radius + 8;
+                    // 方框限制在本栏内：三视图下模型旁方向轴不会画进相邻分栏。
+                    const QRectF box(placement.origin.x() - half, placement.origin.y() - half,
+                                     2 * half, 2 * half);
+                    const QRectF clipped = box.intersected(QRectF(panelPort));
+                    if (clipped.width() < 4 || clipped.height() < 4) continue;
+                    const QRect gizmoViewport(qRound(clipped.x() * ratio),
+                                              qRound((height() - clipped.bottom()) * ratio),
+                                              std::max(1, qRound(clipped.width() * ratio)),
+                                              std::max(1, qRound(clipped.height() * ratio)));
+                    QList<float> gizmo;
+                    const std::array<QVector3D, 3> worldAxes = {QVector3D(1, 0, 0), QVector3D(0, 1, 0),
+                                                                QVector3D(0, 0, 1)};
+                    for (int axis = 0; axis < 3; ++axis)
+                        data_->appendAxisArrow(gizmo, worldAxes[axis], gizmoRight, gizmoUp, gizmoForward,
+                                               axisGizmoColors()[axis], half / placement.radius);
+                    glViewport(gizmoViewport.x(), gizmoViewport.y(), gizmoViewport.width(),
+                               gizmoViewport.height());
+                    // 只清方框内的深度：方向轴始终画在实体之上，同时保持三轴互相遮挡正确。
+                    glEnable(GL_SCISSOR_TEST);
+                    glScissor(gizmoViewport.x(), gizmoViewport.y(), gizmoViewport.width(),
+                              gizmoViewport.height());
+                    glClear(GL_DEPTH_BUFFER_BIT);
+                    glDisable(GL_SCISSOR_TEST);
+                    glEnable(GL_DEPTH_TEST);
+                    buffer_.allocate(gizmo.constData(), int(gizmo.size() * sizeof(float)));
+                    program_->setUniformValue("mvp", QMatrix4x4());
+                    program_->setUniformValue("alpha", 1.0f);
+                    glDrawArrays(GL_TRIANGLES, 0, int(gizmo.size() / 6));
+                    data_->gizmoDrawnInGl = true;
+                }
             }
             glViewport(0, 0, qRound(width() * ratio), qRound(height() * ratio));
             program_->disableAttributeArray(position);
