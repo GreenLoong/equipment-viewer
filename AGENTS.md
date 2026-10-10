@@ -1,6 +1,6 @@
 # 项目协作约定
 
-## 正式1.1装配查看集成（2026-10-10，已交付）
+## 正式1.1装配查看集成（2026-10-10，1.1.1已交付）
 
 用户明确要求将独立v0.3 Demo合并正式软件，之前仅Demo/不替换限制不再约束此次正式集成。主树新branch codex/desktop-assembly-1.1，自111e8bb干净基线开始；旧1.0标签/包与独立Demo包保留，正常SQLite/MySQL/API不作测试数据目标。
 
@@ -9,6 +9,8 @@
 assembly_state唯一负责SceneView及assembly_scene_tests；assembly_ui负责Window/Controller/main/CMake/窗口回归与82STEP样本；assembly_review只读业务独审+独立模拟用户harness；root负责公共文档/串行构建/实际运行/包/Git。先冻结Scene接口，再并行实现。新文件和变更脚本先读再执行。
 
 1.1.0 已交付：源码提交 a5fd782fc48ea4ef8fd095434ea4e906d38b2dc2，分支 codex/desktop-assembly-1.1，标签 v1.1.0，main 同步；包 equipment-viewer-1.1.0-20261010-135556（ZIP SHA256 E01C361420E3140696DAFAF6F695A2EC3030E8533362EE6F6A1740498F411F0E）。验证：全量18项CTest通过32.07秒、转换器17项通过、独立harness原生FBO samples=4、包内运行库真实导入六件电机与82件装配并完成四视图/展开/拉远/清选中保隔离/重启源参数一致，包内EXE原生冒烟通过（临时库）。正常数据库、旧1.0包与旧build未动，升级前备份在 .recovery/databases/20261010-004600-562654。真人满意验收待用户实际体验，自动/模拟结果不得写成真人验收；接手先读 docs/working-state.md 顶部与 docs/releases/1.1.md。
+
+1.1.1 已交付（当前）：源码提交 e49bba97e7c8eaa79395bb9575565f1c585c69e6，标签 v1.1.1，main 同步。修复用户实机反馈的右键平移、坐标轴网页版样式、真实多重采样＋1.5倍超采样、受限地面参考网格，并修掉坐标轴画刷未恢复导致三视图整栏被实体色填充的状态泄漏。验证：18项CTest通过、独立验收程序 tests/r11_desktop_tester.cpp 原生通过、六件电机与82件真实STEP原生全链通过、包内运行库再次全链通过；包 equipment-viewer-1.1.1-20261010-150230（ZIP SHA256 FE4B5702690FD2A50757809AFCB72109D46B90A13527D59708A31B02A9204BE7）。改源码一律用补丁方式，不要用脚本做整文件替换（本节记录过一次编码破坏与恢复）。
 
 
 ## 当前范围与授权
