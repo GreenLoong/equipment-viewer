@@ -35,7 +35,8 @@ constexpr double pi = 3.14159265358979323846;
 struct Triangle {
     QVector3D a, b, c;
     QString id;
-    float light = 1;
+    /** 三个角点的顶点光照；同一平面三角形三个角取值相同，曲面相邻三角面之间连续。 */
+    std::array<float, 3> light = {1, 1, 1};
 };
 
 struct SceneEdge {
@@ -161,6 +162,58 @@ void appendColoredVertex(QList<float> &buffer, const QVector3D &point, const QCo
     buffer.append(float(color.redF()));
     buffer.append(float(color.greenF()));
     buffer.append(float(color.blueF()));
+}
+
+/** 顶点法线平滑阈值（cos 50°）：只有夹角小于该值的相邻三角面才共享平均法线。 */
+constexpr float smoothNormalThreshold = 0.643f;
+
+/** 主光方向；与原逐面光照同一方向，保证亮面分布不变。 */
+const QVector3D &keyLightDirection()
+{
+    static const QVector3D direction = QVector3D(0.30f, 0.40f, 0.86f).normalized();
+    return direction;
+}
+
+/**
+ * 顶点光照：半球环境光（朝上更亮）+ 单向漫反射（双面按同向处理）。
+ * 全部为乘性计算，颜色通道比例不变；取值范围与原 0.55+0.45|dot| 接近，
+ * 但改为逐顶点插值后曲面不再出现逐面片的台阶色块。
+ */
+float vertexLight(const QVector3D &normal)
+{
+    const float up = 0.5f + 0.5f * normal.z();
+    const float diffuse = std::abs(QVector3D::dotProduct(normal, keyLightDirection()));
+    return std::clamp(0.44f + 0.24f * up + 0.38f * diffuse, 0.44f, 1.08f);
+}
+
+/**
+ * 网格顶点法线：按共享顶点累加相邻三角面法线并归一化。
+ * 累加前按该顶点首个面法线对齐，避免相邻三角面缠绕方向不一致时法线互相抵消；
+ * 调用方再用 smoothNormalThreshold 判断硬边，棱角面继续使用面法线。
+ */
+QList<QVector3D> meshVertexNormals(const MeshGeometry &mesh)
+{
+    const auto faceNormal = [&mesh](const std::array<quint32, 3> &triangle) {
+        const QVector3D a(float(mesh.vertices[triangle[0]][0]), float(mesh.vertices[triangle[0]][1]),
+                          float(mesh.vertices[triangle[0]][2]));
+        const QVector3D b(float(mesh.vertices[triangle[1]][0]), float(mesh.vertices[triangle[1]][1]),
+                          float(mesh.vertices[triangle[1]][2]));
+        const QVector3D c(float(mesh.vertices[triangle[2]][0]), float(mesh.vertices[triangle[2]][1]),
+                          float(mesh.vertices[triangle[2]][2]));
+        return QVector3D::crossProduct(b - a, c - a).normalized();
+    };
+    QList<QVector3D> references(mesh.vertices.size());
+    QList<QVector3D> normals(mesh.vertices.size());
+    for (const auto &triangle : mesh.triangles) {
+        const QVector3D normal = faceNormal(triangle);
+        for (quint32 index : triangle) {
+            if (references[index].isNull()) references[index] = normal;
+            normals[index] += QVector3D::dotProduct(normal, references[index]) < 0 ? -normal : normal;
+        }
+    }
+    for (auto &normal : normals)
+        normal = normal.lengthSquared() > 0 ? normal.normalized() : QVector3D();
+    return normals;
 }
 
 /** 一根世界轴在画面上的投影；direction 未归一化，其长度就是真实压缩后的可见长度。 */
@@ -650,12 +703,28 @@ struct SceneData {
         return result;
     }
 
-    QColor color(const Triangle &triangle) const
+    /** 零件基色：工程视图统一灰白，其余用稳定配色或自定义颜色。 */
+    QColor baseColor(const Triangle &triangle) const
     {
         QColor base = colors.value(triangle.id, QColor(89, 157, 205));
         if (viewMode == SceneView::ViewMode::Engineering) base = QColor(175, 184, 195);
-        return QColor::fromRgbF(base.redF() * triangle.light, base.greenF() * triangle.light,
-                               base.blueF() * triangle.light);
+        return base;
+    }
+
+    /** 指定角点的着色：基色 × 该角点顶点光照；原生路径按角点上传颜色做逐顶点插值。 */
+    QColor shadedColor(const Triangle &triangle, int corner) const
+    {
+        const QColor base = baseColor(triangle);
+        const float light = triangle.light[corner];
+        return QColor::fromRgbF(base.redF() * light, base.greenF() * light, base.blueF() * light);
+    }
+
+    /** 软件回退的逐面着色：基色 × 三角面三个角点光照的平均值。 */
+    QColor color(const Triangle &triangle) const
+    {
+        const QColor base = baseColor(triangle);
+        const float light = (triangle.light[0] + triangle.light[1] + triangle.light[2]) / 3;
+        return QColor::fromRgbF(base.redF() * light, base.greenF() * light, base.blueF() * light);
     }
 
     QList<ProjectedFace> projected(const QSize &size) const
@@ -954,10 +1023,12 @@ protected:
             for (const auto &triangle : data_->triangles) {
                 if (data_->hidden.contains(triangle.id))
                     continue;
-                const QColor color = data_->color(triangle);
                 const QVector3D offset = data_->offsets.value(triangle.id);
-                for (const auto &point : {triangle.a, triangle.b, triangle.c})
-                    appendColoredVertex(vertices, point + offset, color);
+                const std::array<QVector3D, 3> corners = {triangle.a, triangle.b, triangle.c};
+                // 逐角点颜色：曲面相邻三角面共享顶点法线，插值后不再出现面片台阶。
+                for (int corner = 0; corner < 3; ++corner)
+                    appendColoredVertex(vertices, corners[corner] + offset,
+                                        data_->shadedColor(triangle, corner));
             }
             buffer_.allocate(vertices.constData(), int(vertices.size() * sizeof(float)));
             const int position = program_->attributeLocation("position");
@@ -1049,13 +1120,15 @@ private:
         }
     }
 
-    /** 超采样倍率：高DPI屏幕像素已密，只在普通屏幕上额外放大1.5倍，并受纹理尺寸上限约束。 */
+    /**
+     * 超采样倍率：每个逻辑像素至少采样 2×2 个渲染像素（设备像素比更高时直接用它），
+     * 与 4 倍多重采样叠加抗锯齿；受 8192 纹理尺寸上限与 2.5 倍上限约束。
+     */
     float renderScale() const
     {
         const float dpr = float(std::max(1.0, double(devicePixelRatioF())));
-        const float supersample = dpr < 1.5f ? 1.5f : 1.0f;
         const float limit = 8192.0f / float(std::max(320, std::max(width(), height())));
-        return std::clamp(dpr * supersample, 1.0f, std::max(1.0f, std::min(2.5f, limit)));
+        return std::clamp(std::max(dpr, 2.0f), 1.0f, std::max(1.0f, std::min(2.5f, limit)));
     }
 
     /** 按当前像素尺寸准备绘制FBO；先请求4倍多重采样，驱动不支持时退回单采样并如实报告。 */
@@ -1352,10 +1425,14 @@ void SceneView::setParts(const QList<Part> &parts)
         }
         data.bounds.append({part.id, part.shape == QStringLiteral("cylinder"), lower, upper, dimensions});
     }
-    const auto triangle = [&](const Part &part, QVector3D a, QVector3D b, QVector3D c) {
-        const QVector3D normal = QVector3D::crossProduct(b - a, c - a).normalized();
-        const float light = 0.55f + 0.45f * std::abs(QVector3D::dotProduct(normal, QVector3D(0.3f, 0.4f, 0.86f)));
-        data.triangles.append({a, b, c, part.id, light});
+    // 逐顶点光照：平面（长方体、圆柱端面）三角面的三个角点法线相同，
+    // 曲面（圆柱侧面、STEP网格）相邻三角面共享平滑法线，避免逐面片台阶。
+    const auto triangle = [&](const Part &part, const std::array<QVector3D, 3> &positions,
+                              const std::array<QVector3D, 3> &normals) {
+        Triangle item{positions[0], positions[1], positions[2], part.id, {}};
+        for (int corner = 0; corner < 3; ++corner)
+            item.light[corner] = vertexLight(normals[corner]);
+        data.triangles.append(item);
     };
     for (const auto &part : parts) {
         const qsizetype firstTriangle = data.triangles.size();
@@ -1367,8 +1444,13 @@ void SceneView::setParts(const QList<Part> &parts)
                                      (i & 4 ? 1 : -1) * static_cast<long double>(*part.sizeZ) / 2);
             const int faces[6][4] = {{0,2,3,1},{4,5,7,6},{0,1,5,4},{2,6,7,3},{0,4,6,2},{1,3,7,5}};
             for (const auto &face : faces) {
-                triangle(part, vertices[face[0]], vertices[face[1]], vertices[face[2]]);
-                triangle(part, vertices[face[0]], vertices[face[2]], vertices[face[3]]);
+                const std::array<QVector3D, 4> corners = {vertices[face[0]], vertices[face[1]],
+                                                          vertices[face[2]], vertices[face[3]]};
+                // 长方体保持分面：每个面用自己的面法线，棱角必须是硬边。
+                const QVector3D normal = QVector3D::crossProduct(corners[1] - corners[0],
+                                                                corners[2] - corners[0]).normalized();
+                triangle(part, {corners[0], corners[1], corners[2]}, {normal, normal, normal});
+                triangle(part, {corners[0], corners[2], corners[3]}, {normal, normal, normal});
             }
         } else if (part.shape == QStringLiteral("mesh")) {
             // vertices始终是局部毫米；与基础几何共用position+offset归一化，保留STEP装配位置。
@@ -1376,8 +1458,21 @@ void SceneView::setParts(const QList<Part> &parts)
             vertices.reserve(part.mesh->vertices.size());
             for (const auto &vertex : part.mesh->vertices)
                 vertices.append(point(part, vertex[0], vertex[1], vertex[2]));
-            for (const auto &indices : part.mesh->triangles)
-                triangle(part, vertices[indices[0]], vertices[indices[1]], vertices[indices[2]]);
+            // 与网页版一致：共享顶点平均法线 → 曲面平滑；超过阈值的硬边仍用面法线。
+            const QList<QVector3D> vertexNormals = meshVertexNormals(*part.mesh);
+            for (const auto &indices : part.mesh->triangles) {
+                const std::array<QVector3D, 3> corners = {vertices[indices[0]], vertices[indices[1]],
+                                                          vertices[indices[2]]};
+                const QVector3D faceNormal = QVector3D::crossProduct(corners[1] - corners[0],
+                                                                    corners[2] - corners[0]).normalized();
+                std::array<QVector3D, 3> cornerNormals;
+                for (int corner = 0; corner < 3; ++corner) {
+                    const QVector3D averaged = vertexNormals[indices[corner]];
+                    cornerNormals[corner] = QVector3D::dotProduct(averaged, faceNormal) >= smoothNormalThreshold
+                        ? averaged : faceNormal;
+                }
+                triangle(part, corners, cornerNormals);
+            }
         } else if (part.shape == QStringLiteral("cylinder")) {
             constexpr int segments = 20;
             // 乘三角函数前提升半径，防止合法double次正规径向偏移先量化成零或失真后再归一化。
@@ -1388,10 +1483,16 @@ void SceneView::setParts(const QList<Part> &parts)
                 const auto leftB = point(part, -static_cast<long double>(*part.length) / 2, radius * std::cos(b), radius * std::sin(b));
                 const auto rightA = point(part, static_cast<long double>(*part.length) / 2, radius * std::cos(a), radius * std::sin(a));
                 const auto rightB = point(part, static_cast<long double>(*part.length) / 2, radius * std::cos(b), radius * std::sin(b));
-                triangle(part, leftA, rightA, rightB);
-                triangle(part, leftA, rightB, leftB);
-                triangle(part, point(part, -static_cast<long double>(*part.length) / 2, 0, 0), leftB, leftA);
-                triangle(part, point(part, static_cast<long double>(*part.length) / 2, 0, 0), rightA, rightB);
+                // 圆柱轴线沿X：侧面法线为半径方向(0,cos,sin)，端面法线为轴向(±1,0,0)。
+                const QVector3D normalA(0, float(std::cos(a)), float(std::sin(a)));
+                const QVector3D normalB(0, float(std::cos(b)), float(std::sin(b)));
+                const QVector3D capLeft(-1, 0, 0), capRight(1, 0, 0);
+                triangle(part, {leftA, rightA, rightB}, {normalA, normalA, normalB});
+                triangle(part, {leftA, rightB, leftB}, {normalA, normalB, normalB});
+                triangle(part, {point(part, -static_cast<long double>(*part.length) / 2, 0, 0), leftB, leftA},
+                         {capLeft, capLeft, capLeft});
+                triangle(part, {point(part, static_cast<long double>(*part.length) / 2, 0, 0), rightA, rightB},
+                         {capRight, capRight, capRight});
             }
         }
         if (!data.cachePartEdges(firstTriangle)) {
