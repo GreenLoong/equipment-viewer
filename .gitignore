@@ -1,16 +1,4 @@
-/build/
-/data/
-/CMakeUserPresets.json
-*.user
-*.sqlite
-*.sqlite-*
-
-# Local recovery snapshots
-/.recovery/
-# Local scratch files
-/work/
-
-# Build products
+# 构建产物（CMake / Ninja）
 /build/
 /build-*/
 /cmake-build-*/
@@ -19,34 +7,40 @@ CMakeCache.txt
 compile_commands.json
 *.obj
 *.o
+*.a
+*.lib
+*.pdb
+*.ilk
+
+# 二进制与可执行文件（交付目录在仓库外，仓库里不应出现）
 *.exe
 *.dll
 *.so
 *.so.*
 *.dylib
-*.pdb
-*.ilk
-*.a
-*.lib
 
-# Local IDE settings
-.vs/
-.idea/
-.vscode/
-*.user
-*.user.*
-CMakeUserPresets.json
+# 本机运行库与本机服务端残留
+/.runtime/
+/api/
 
-# Runtime databases and SQLite sidecar files
-*.db
-*.db-*
+# 运行数据：资料库只在用户本机，不进仓库
+/data/
 *.sqlite
 *.sqlite-*
 *.sqlite3
 *.sqlite3-*
-/data/
+*.db
+*.db-*
 
-# Local configuration and credentials
+# 本机恢复快照、临时工作目录与输出
+/.recovery/
+/work/
+/outputs/
+
+# 日志
+*.log
+
+# 本机配置与凭证
 .env
 .env.*
 !.env.example
@@ -56,21 +50,21 @@ CMakeUserPresets.json
 *.pem
 *.key
 
-# OS files
+# IDE 与编辑器
+.vs/
+.idea/
+.vscode/
+.qtcreator/
+*.user
+*.user.*
+CMakeUserPresets.json
+.qtc_clangd/
+
+# Python
+__pycache__/
+*.pyc
+
+# 系统文件
 .DS_Store
 Thumbs.db
 desktop.ini
-# 1.0 local services and dependencies
-/.runtime/
-/api/runtime/
-/api/node_modules/
-/api/coverage/
-*.log
-*.db
-*.db-*
-*.sqlite3
-*.sqlite3-*
-
-# Python verification artifacts
-__pycache__/
-*.pyc

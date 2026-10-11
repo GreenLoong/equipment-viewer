@@ -49,11 +49,13 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
 | 路径 | 内容 |
 | --- | --- |
 | `refactor/` | **正式实现**：去重重构后的源码、测试、构建与打包脚本、交付文档 |
-| `src/`、`tests/`、`CMakeLists.txt`、`scripts/`、`tools/` | 1.1.1 历史实现与脚本，逐字节保留作为对照与回退基线 |
 | `samples/` | 虚构 JSON 样例与公开 STEP 样例（含来源与许可） |
-| `docs/` | 工程规范、架构导读、版本记录、工作状态、模拟反馈与验收记录 |
+| `scripts/sync-cad-runtime.ps1` | 校验签名与哈希后把私有 CAD 运行库同步到构建目录/交付目录 |
+| `tools/cad/` | CAD 运行库准备脚本（`setup_runtime.py`、`convert_step.py`、依赖清单） |
 
-`api/`（团队共享库的 Node/MySQL/Redis 服务端）已在 1.2.0 删除，可从标签 `v1.1.1` 取回。
+1.1.1 及更早的历史实现与过程记录（原 `src/`、`tests/`、根 `CMakeLists.txt`、旧 `scripts/`、
+`docs/` 过程文档，以及团队共享库的 `api/` 服务端）已从工作树移除，完整保存在 Git 标签
+`v1.1.1`（另见 `docs/releases/` 各版本记录，同样位于该标签内）。
 
 ## 架构与实现要点
 
@@ -96,7 +98,8 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
 | 交付包 | 包内以临时资料库实际启动并截图（`exit=0`）；`manifest.json` 记录版本、提交、文件数与 exe 哈希 |
 
 历史版本的验证记录（含 82 件装配 157558 顶点 / 175598 三角的原生全链、Redis/MySQL 回归等）
-见 `docs/releases/` 与 [`refactor/docs/package/03-验证记录.md`](refactor/docs/package/03-验证记录.md)。
+保存在标签 `v1.1.1` 的 `docs/releases/` 下；当前版本的完整验证数据见
+[`refactor/docs/package/03-验证记录.md`](refactor/docs/package/03-验证记录.md)。
 自动检查、独立审查、模拟验收与真人验收分别记录，不互相替代。
 
 ## 版本历史
@@ -125,8 +128,8 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
 - [交付说明](refactor/docs/package/README.md)、[使用说明](refactor/docs/package/01-使用说明.md)、
   [技术说明](refactor/docs/package/02-技术说明.md)、[验证记录](refactor/docs/package/03-验证记录.md)
 - [重复实现审查与去重报告](refactor/docs/dedup-report.md)
-- [架构导读](docs/architecture.md)、[工程规范](docs/engineering-standards.md)、
-  [当前工作状态](docs/working-state.md)
+- [简历与面试演示指南](refactor/docs/package/05-简历与面试演示指南.md)、
+  [当前状态与恢复入口](refactor/docs/working-state.md)、[协作约定](AGENTS.md)
 
 ## 数据与恢复
 

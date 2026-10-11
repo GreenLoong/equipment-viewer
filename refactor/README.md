@@ -15,7 +15,7 @@ Node/MySQL/Redis 服务端、相关测试与接口契约文档一并删除，主
 | 路径 | 内容 |
 | --- | --- |
 | `src/` | 去重后的正式实现源码 |
-| `tests/` | 与工程根目录 `tests/` 同名的测试副本；3 个文件（`cad_user_tests.cpp`、`cad_import_process_tests.cpp`、`reviewer_resource_tests.cpp`）因移除共享库而有意分叉，其余仍逐字节一致 |
+| `tests/` | 测试源码（原 1.1.1 `tests/` 的副本）；3 个文件（`cad_user_tests.cpp`、`cad_import_process_tests.cpp`、`reviewer_resource_tests.cpp`）因移除共享库而对 1.1.1 有意分叉，其余与标签 `v1.1.1` 内同名文件逐字节一致 |
 | `tools/` | 构建用 `environment_probe.cpp` 副本，以及重复度审查与副本一致性校验脚本 |
 | `CMakeLists.txt` | 本目录的独立构建入口；目标名、测试名与根工程保持一致 |
 | `build.ps1` | 独立构建脚本（工具链参数与 `scripts/build.ps1` 相同，只改 `-S` 指向） |
@@ -68,21 +68,29 @@ build-refactor\bin\cad_user_tests.exe -platform windows --assembly-preview-check
 - 主程序依赖：`qt_sqlite_demo.exe` 已不再导入 `Qt6Network.dll`，交付目录相应去掉
   `Qt6Network.dll`、`tls`、`networkinformation`。
 
-## 与工程根目录的关系
+## 与 1.1.1 历史版本的关系（2026-10-11 仓库整理后）
 
-根目录的 `src/`、`tests/`、`CMakeLists.txt`、`scripts/`、`tools/`、`samples/` 仍与 1.1.1
-逐字节一致，作为历史快照保留：
+去重重构当时是在原工程之外新建本目录，原 `src/`、`tests/`、根 `CMakeLists.txt`、旧 `scripts/`、
+`docs/` 过程文档与共享库服务端 `api/` 都保持原样用于对照。仓库整理时这些历史文件已从工作树删除
+（提交历史与标签不受影响），现在只用标签 `v1.1.1` 读取：
 
 ```powershell
-git -c safe.directory="D:/作业/简历/工作模拟" diff --stat -- src tests CMakeLists.txt scripts tools samples
-# 无输出：历史实现未改动
+git show v1.1.1:src/sceneview.cpp | less          # 读单个历史文件
+git worktree add ..\ev-1.1.1 v1.1.1               # 需要整树对照时用临时 worktree
+git diff --no-index ..\ev-1.1.1\src refactor\src  # 逐文件比较去重前后的实现
+git worktree remove ..\ev-1.1.1
 ```
 
-v1.2.0 的改动只发生在 `refactor/`、根 `README.md`、`docs/`（删除被移除功能的契约与缓存规划文档、
-追加工作状态记录）以及删除 `api/`（共享库服务端）。对照阅读用
-`git diff --no-index src refactor/src`。
+`refactor/tools/verify-harness-copy.ps1` 在根目录同名文件缺失时会自动改用 `v1.1.1` 的 blob 比对，
+所以“重构版测试没有被改弱”这条证据依然成立（当前结果：`checked=15 mismatches=0`）。
+
+仓库顶层现在只保留 `README.md`、`refactor/`、`samples/`、`scripts/sync-cad-runtime.ps1`、
+`tools/cad/`、`AGENTS.md` 与忽略规则。
 
 ## 使用建议
 
-- 日常开发、构建与打包都以本目录为入口；根目录 `scripts/*.ps1` 仍服务于 1.1.1 历史构建。
+- 日常开发、构建与打包都以本目录为入口：`.\refactor\build.ps1` 与
+  `.\refactor\package.ps1 -OutputRoot <交付目录> -BuildDirectory build-refactor -Force`。
 - 测试侧仍存在大量重复的窗口/临时库样板（详见报告“残留与后续项”），改动需要单独的功能卡与复验。
+- 迁移候选：标签 `v1.1.1` 内的 `tests/cad_converter_tests.py`（转换器 17 项检查）尚未迁入本目录，
+  如需纳入正式验证流程应连同运行库准备脚本一起迁入并复跑。

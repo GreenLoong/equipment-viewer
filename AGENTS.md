@@ -1,57 +1,45 @@
-# 项目协作约定
+# 项目协作约定（设备模型查看器 v1.2.0）
 
-## 正式1.1装配查看集成（2026-10-10，1.1.1已交付）
+## 范围与仓库布局
 
-用户明确要求将独立v0.3 Demo合并正式软件，之前仅Demo/不替换限制不再约束此次正式集成。主树新branch codex/desktop-assembly-1.1，自111e8bb干净基线开始；旧1.0标签/包与独立Demo包保留，正常SQLite/MySQL/API不作测试数据目标。
-
-计划原生Qt集成：默认彩色/工程轴测/二维正交/同比例三视图，世界XYZ角落/模型旁/同时/隐藏，网格及默认关闭尺寸边缘读数；沿原包络中心auto/XYZ有序外向展开，选中件可控拉远/复原，稳定自动色与自定义；隔离时双击空白清选中保持隔离，清单双击或换有效件切隔离，显示全部明确退出。原设备/STEP/共享批注继续可用，源参数不能因演示位移写回库。
-
-assembly_state唯一负责SceneView及assembly_scene_tests；assembly_ui负责Window/Controller/main/CMake/窗口回归与82STEP样本；assembly_review只读业务独审+独立模拟用户harness；root负责公共文档/串行构建/实际运行/包/Git。先冻结Scene接口，再并行实现。新文件和变更脚本先读再执行。
-
-1.1.0 已交付：源码提交 a5fd782fc48ea4ef8fd095434ea4e906d38b2dc2，分支 codex/desktop-assembly-1.1，标签 v1.1.0，main 同步；包 equipment-viewer-1.1.0-20261010-135556（ZIP SHA256 E01C361420E3140696DAFAF6F695A2EC3030E8533362EE6F6A1740498F411F0E）。验证：全量18项CTest通过32.07秒、转换器17项通过、独立harness原生FBO samples=4、包内运行库真实导入六件电机与82件装配并完成四视图/展开/拉远/清选中保隔离/重启源参数一致，包内EXE原生冒烟通过（临时库）。正常数据库、旧1.0包与旧build未动，升级前备份在 .recovery/databases/20261010-004600-562654。真人满意验收待用户实际体验，自动/模拟结果不得写成真人验收；接手先读 docs/working-state.md 顶部与 docs/releases/1.1.md。
-
-1.1.1 已交付（当前）：源码提交 e49bba97e7c8eaa79395bb9575565f1c585c69e6，标签 v1.1.1，main 同步。修复用户实机反馈的右键平移、坐标轴网页版样式、真实多重采样＋1.5倍超采样、受限地面参考网格，并修掉坐标轴画刷未恢复导致三视图整栏被实体色填充的状态泄漏。验证：18项CTest通过、独立验收程序 tests/r11_desktop_tester.cpp 原生通过、六件电机与82件真实STEP原生全链通过、包内运行库再次全链通过；包 equipment-viewer-1.1.1-20261010-150230（ZIP SHA256 FE4B5702690FD2A50757809AFCB72109D46B90A13527D59708A31B02A9204BE7）。改源码一律用补丁方式，不要用脚本做整文件替换（本节记录过一次编码破坏与恢复）。
-
-
-## 当前范围与授权
-
-- 工程：Qt Widgets + SQLite工业设备查看器；有效规范见docs/engineering-standards.md v1.1，当前状态见docs/working-state.md，实施前必读。
-- 用户已授权全部由Agent开发、连续推进到可交互桌面交付，并用明确标注的模拟反馈迭代；不再要求用户写关键逻辑或逐小功能确认。
-- 当前0.3..0.9已逐版发布，1.0源码/包/模拟试用与独审已完成，远端复核见working-state。后续按实际反馈派发，不重复实现已通过阶段。WSL不重启全局，真实用户体验单列；不得自行启动付费服务、公开部署或删除正常数据。
-- 既有真实验收：环境和记录示例2026-10-07通过，F01-1用户2026-10-08明确验收通过。自动检查、独立静态审查、模拟需求验收和真实人工验收分开记录。
-- 已授权局部排查、实现、验证、文档和本地Git检查点自主推进；重大需求/架构变化、破坏性数据操作、外部发布及新增费用按具体影响确认。
-- origin为https://github.com/GreenLoong/equipment-viewer.git；用户已授权远端同步；每个已验证版本推送到origin，最终更新默认main，保留远端历史，禁止force push。
-
-## 开发、规范与审查
-
-- 每阶段执行功能卡、实现、运行验证、独立审查、修复复验、文档导读和交付。正确性/安全/明显维护问题修复后交付；行为改变需独立复查。
-- 新增公开业务接口中文Doxygen，关键约束注释原因。遵守C++17、Qt6 MinGW、命名/职责/生命周期及SQL参数绑定等有效规范。
-- Controller为设备、选中和显隐状态来源；Window不执行SQL，Importer失败不改输出，Scene不访问DB。名称不作为身份标识。
-- 同一文件同时只有一位负责人。主管维护Controller/Window/main/CMake/公共文档与交付；数据负责人维护Importer/导入测试/样例；图形负责人维护Scene/场景测试；独立审查者只读业务实现。
-- 保留用户代码、未提交改动和正常数据库。原记录功能保留；不按行数重新补种设备，不以清库处理结构问题。
-- 首次执行新增或变化的安装/构建/测试/迁移脚本前检查内容；允许下载必要依赖，但先核实来源与安装脚本。
+- 项目：Windows 桌面工业设备 / CAD 三维查看器（C++17 + Qt6 Widgets + OpenGL + SQLite）。
+- 正式实现、测试、脚本与文档全部在 `refactor/`：
+  `src/`、`tests/`、`tools/`、`resources/`、`CMakeLists.txt`、`build.ps1`、`package.ps1`、
+  `docs/package/`（01 使用说明、02 技术说明、03 验证记录、04 去重报告、05 简历与面试演示指南）、
+  `docs/working-state.md`（当前状态与恢复入口）。
+- 仓库顶层只保留：`README.md`、`refactor/`、`samples/`（样例与许可）、
+  `scripts/sync-cad-runtime.ps1`、`tools/cad/`（CAD 运行库准备）、`AGENTS.md`、`.gitignore`、`.gitattributes`。
+- 1.1.1 及更早的历史实现与过程记录（原 `src/`、`tests/`、根 `CMakeLists.txt`、旧 `scripts/`、`docs/`、
+  共享库服务端 `api/`）已从工作树移除，**完整保存在 Git 标签 `v1.1.1`**。需要对照时用
+  `git show v1.1.1:<路径>` 或临时 worktree 检出；不要把历史文件恢复到 `main` 的工作树里。
 
 ## 环境与入口
 
-- Qt6.11.1 MinGW64、GCC13.1.0、CMake3.30.5、Ninja1.12.1、QSQLITE SQLite3.53.0；OpenGL/OpenGLWidgets已接入，不混用MSVC。
-- scripts/build.ps1：重新配置、构建、部署Qt及私有CAD运行库、当前主树16项CTest；真实CAD/资源专项单列，以实际CMake为准。先用明确受信Python执行tools/cad/setup_runtime.py prepare；新canonical .runtime/cad-distribution/cad-runtime，旧legacy保留。PowerShell脚本保留UTF-8 BOM以兼容5.1。
-- 启动设备查看器.cmd或scripts/run.ps1 -EquipmentView打开设备；启动示例.cmd仍打开原记录窗口。--database可指定文件，--equipment-check只输出数据后退出。
-- build/bin/scene_tests.exe -platform windows --snapshot-dir <目录>：真实图形验证；offscreen检查是软件回退，不代替原生OpenGL。
-- scripts/package.ps1 -OutputRoot <目录>：只复制运行文件、插件、虚构样例和指南到独立交付目录，不复制正常data或凭证。
-- 实际运行步骤见README.md，操作与限制见docs/user-guide.md，模块导读见docs/architecture.md，模拟反馈见docs/simulated-feedback.md，实际检查见验证记录.md。
+- Qt 6.11.1 MinGW 64、GCC 13.1.0、CMake 3.30.5、Ninja 1.12.1、QSQLITE；不混用 MSVC。
+- 构建 + 部署 Qt 运行库 + 同步 CAD 运行库 + 全量 CTest：`.\refactor\build.ps1`
+- 打包交付目录（只含运行文件，不含源码、测试、资料库与凭证）：
+  `.\refactor\package.ps1 -OutputRoot 'D:\作业\简历\cad查看器' -BuildDirectory build-refactor -Force`
+- 原生图形验收（需要桌面会话）：
+  `build-refactor\bin\r11_desktop_tester.exe -platform windows --snapshot-dir build-refactor\r11-native`
+- 真实 STEP 全链：
+  `build-refactor\bin\cad_user_tests.exe -platform windows --assembly-preview-check --assembly samples\cad\Yellow_gearmotor_straight.step --expected-assembly-count 6 --snapshot-dir build-refactor\cad-native`
+- CAD 运行库：`scripts/sync-cad-runtime.ps1` 校验签名与哈希后同步 `.runtime/cad-distribution/cad-runtime`（忽略目录）；
+  首次准备用 `tools/cad/setup_runtime.py`（需要受信 Python 3.12+）。
+- 副本一致性：`.\refactor\tools\verify-harness-copy.ps1`（根目录同名文件不存在时自动改用标签 `v1.1.1` 比对）。
 
-## 中断、版本管理与数据恢复
+## 修改与验证纪律
 
-- 额度恢复、换会话或重新分配Agent时先读working-state/handoffs，再核对分支、Git差异和实际工具进程，不能假设旧Agent存活。
-- 及时保存代码和各角色handoff；主管维护汇总状态。验证阶段建立本地提交；额度突发中断不保证还能写最后记录，用最近已保存状态恢复。
-- 基线cbc879f、功能提交8ebe748；最终文档检查点以实际git log为准。当前分支feature/release-1.0，按明确授权同步远端。
-- 源码Git检查点与数据库恢复分开。scripts/checkpoint-data.py使用SQLite online backup并验证quick_check，快照在忽略的.recovery/databases。
-- 恢复不得reset --hard、clean或删除数据库；优先修复分支或针对指定提交回退，保留未完成工作。普通数据库复制前关闭所有使用程序。
-- 提交前检查git diff --check、git diff --cached和git status，避免混入本地配置、生成物、数据库或无关修改；提交不等于真实人工验收。
+- 改源码一律用补丁方式，禁止用脚本做整文件替换（曾因编码转换破坏中文注释）。
+- 编译保持 `-Wall -Wextra -Wpedantic` 零警告；改动后跑全量 CTest，涉及图形/交互的改动另跑原生 harness。
+- 自动检查、独立审查、模拟验收与真人验收分开记录，不互相替代；没执行的检查不写成通过。
+- 生产数据不进仓库、不当测试目标：`data/`、`.recovery/`、`.runtime/`、`api/` 及本机凭证均被忽略。
+  禁止 `reset --hard`、`clean` 或删除数据库；源码回退不能恢复数据库。
+- 新增公开业务接口用中文 Doxygen；关键约束注释写明原因；遵守既有分层职责
+  （Window 不执行 SQL、Scene 不访问数据库、Controller 是状态唯一来源、导入失败不改变输出）。
+- 提交前检查 `git status`、`git diff --cached`、`git diff --check`，避免混入构建产物、日志、数据库与本机配置。
 
-## 逐版1.0当前执行
+## 版本与远端
 
-- 用户要求逐步更新，0.8 CAD与0.9资源/恢复已分别实现验收并发布；1.0完整包路径/源码/哈希/服务状态见docs/releases/1.0.md和working-state。后续反馈按实际范围派发，保留正常数据和独立审查。
-- 所有新Agent读取docs/engineering-standards.md v1.1、docs/working-state.md和当前版本功能卡。专职模拟用户与专职review分工必须保留。
-- 授权下载、独立本机服务、持续开发与GitHub推送，不涉及付费或公开部署；保护既有MySQL80/SQLite资料，运行目录和配置不得上传。
-- 当前分支feature/release-1.0。合并origin/main保留初始文档历史，再按阶段推送，不force。不安装未经检查的npm生命周期脚本。
+- 远端 `origin` = https://github.com/GreenLoong/equipment-viewer.git；已验证版本推送 `main` 并打标签，
+  保留既有提交历史，**禁止 force push**、禁止重写历史。
+- 历史版本标签：`v0.3.0`…`v1.0.0`、`v1.1.0`、`v1.1.1`、`v1.2.0`。取回任何历史文件都从标签读，不重建历史。
