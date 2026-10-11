@@ -40,15 +40,6 @@ compile_commands.json
 # 日志
 *.log
 
-# 本机文件，不上传
-/AGENTS.md
-
-# 本机目录，不上传
-/.local/
-
-# 本机记录，不上传
-/refactor/docs/working-state.md
-
 # 本机配置与凭证
 .env
 .env.*
