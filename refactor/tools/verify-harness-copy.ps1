@@ -1,11 +1,15 @@
-# 校验 refactor/tests 与 refactor/tools 内的测试快照与历史实现一致，防止“重构版跑了被改弱的测试”。
-# 只读比较，不修改任何文件。2026-10-11 仓库整理后，1.1.1 的历史实现已移出工作树，
-# 因此根目录同名文件不存在时自动改用 Git 标签里的 blob 比对（git hash-object 与索引使用同样的
-# 行尾规范化，结论与逐字节比较等价）；标签缺失时明确报告 no-legacy-reference 而不是静默跳过。
+# 校验 refactor/tests 与 refactor/tools 内的测试快照与重构前的实现一致，防止“重构版跑了被改弱的测试”。
+# 只读比较，不修改任何文件。工作目录里存在旧实现的同名文件时直接逐字节比对；否则改用 -LegacyRef
+# 指定的本机历史引用做 blob 比对（git hash-object 与索引使用同样的行尾规范化，结论与逐字节比较
+# 等价）。-LegacyRef 只存在于开发机，不随仓库分发；引用缺失时明确报告 no-legacy-reference，
+# 而不是静默跳过。
+param(
+    [string]$LegacyRef = 'v1.1.1'
+)
 $ErrorActionPreference = 'Stop'
 $refactorRoot = Split-Path -Parent $PSScriptRoot
 $projectRoot = Split-Path -Parent $refactorRoot
-$legacyRef = 'v1.1.1'
+$legacyRef = $LegacyRef
 $gitArgs = @('-c', "safe.directory=$projectRoot", '-C', $projectRoot)
 # 1.2.0 起有意分叉的测试：整体移除“团队共享库/工艺批注”后，这几个文件删掉了相关步骤，
 # 输出与注释里的内部术语也做了清理，与 1.1.1 不再逐字节一致，属预期差异，不计入不一致数量。

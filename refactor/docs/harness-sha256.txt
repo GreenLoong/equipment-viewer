@@ -1,5 +1,6 @@
-# refactor/tests 与 refactor/tools 内的测试快照与历史实现（标签 v1.1.1）的 SHA256 对比清单。
-# 权威校验用 refactor/tools/verify-harness-copy.ps1（直接对比根目录同名文件，缺失时改用标签 v1.1.1 的 blob）；
+# refactor/tests 与 refactor/tools 内测试快照的 SHA256 清单。
+# 权威校验用 refactor/tools/verify-harness-copy.ps1：工作目录里存在旧实现同名文件时直接逐字节比对，
+# 否则用 -LegacyRef 指定的本机历史引用做 blob 比对（该引用不随仓库分发；缺失时脚本报告 no-legacy-reference）。
 # 本清单为 2026-10-11 工作区哈希，标 (diverged-by-design) 的文件是 1.2.0 有意改动（移除共享库、清理内部术语）。
 E5FF136B029DA6FCE02FE9CC1CD73B23609FA4C267176AB654D9ED22955B6821  tests/assembly_scene_tests.cpp
 7F48FF9E540511F1CE6197EE2B87374FE36E17C85F46FCF2CBD3E40F4EA8BD10  tests/axis_gizmo_shot.cpp

@@ -7,15 +7,15 @@
 
 v1.2.0 按用户要求**整体移除“团队共享库/工艺批注”**这一可选服务：客户端对话框、HTTP 客户端、
 Node/MySQL/Redis 服务端、相关测试与接口契约文档一并删除，主程序不再链接 Qt Network。
-1.1.1 及更早的历史实现仍完整保存在 Git 标签 `v1.1.1`，需要时可用
-`git checkout v1.1.1 -- api` 等命令取回参考。
+被移除的共享库/批注功能与更早的实现不再随仓库分发；如需对照，见
+`docs/dedup-report.md` 里逐条列出的重复实现证据与处理方式。
 
 ## 目录结构
 
 | 路径 | 内容 |
 | --- | --- |
 | `src/` | 去重后的正式实现源码 |
-| `tests/` | 测试源码（原 1.1.1 `tests/` 的副本）；3 个文件（`cad_user_tests.cpp`、`cad_import_process_tests.cpp`、`reviewer_resource_tests.cpp`）因移除共享库而对 1.1.1 有意分叉，其余与标签 `v1.1.1` 内同名文件逐字节一致 |
+| `tests/` | 测试源码；测试名与目标名沿用既有约定，其中 3 个文件（`cad_user_tests.cpp`、`cad_import_process_tests.cpp`、`reviewer_resource_tests.cpp`）在移除共享库时同步删掉了相关步骤 |
 | `tools/` | 构建用 `environment_probe.cpp` 副本，以及重复度审查与副本一致性校验脚本 |
 | `CMakeLists.txt` | 本目录的独立构建入口；目标名、测试名与根工程保持一致 |
 | `build.ps1` | 独立构建脚本（工具链参数与 `scripts/build.ps1` 相同，只改 `-S` 指向） |
@@ -68,29 +68,29 @@ build-refactor\bin\cad_user_tests.exe -platform windows --assembly-preview-check
 - 主程序依赖：`qt_sqlite_demo.exe` 已不再导入 `Qt6Network.dll`，交付目录相应去掉
   `Qt6Network.dll`、`tls`、`networkinformation`。
 
-## 与 1.1.1 历史版本的关系（2026-10-11 仓库整理后）
+## 与去重前实现的对照方式（2026-10-11 仓库整理后）
 
-去重重构当时是在原工程之外新建本目录，原 `src/`、`tests/`、根 `CMakeLists.txt`、旧 `scripts/`、
-`docs/` 过程文档与共享库服务端 `api/` 都保持原样用于对照。仓库整理时这些历史文件已从工作树删除
-（提交历史与标签不受影响），现在只用标签 `v1.1.1` 读取：
+去重重构当时是在原工程之外新建本目录，原 `src/`、`tests/` 等保留下来用于逐文件对照，重构完成后
+只保留重构版本，避免仓库里出现两套并行实现。对照方法与量化结果记录在
+[`docs/dedup-report.md`](docs/dedup-report.md)：重复代码组数 60 → 50，`sceneview.cpp` 里
+≥80 词的重复片段由 7 组降为 0 组，并逐条列出合并方式与未处理的残留项。
+
+如果你手上保有重构前的源码树，可以这样对照：
 
 ```powershell
-git show v1.1.1:src/sceneview.cpp | less          # 读单个历史文件
-git worktree add ..\ev-1.1.1 v1.1.1               # 需要整树对照时用临时 worktree
-git diff --no-index ..\ev-1.1.1\src refactor\src  # 逐文件比较去重前后的实现
-git worktree remove ..\ev-1.1.1
+git diff --no-index <旧源码目录>\src refactor\src   # 逐文件比较去重前后的实现
 ```
 
-`refactor/tools/verify-harness-copy.ps1` 在根目录同名文件缺失时会自动改用 `v1.1.1` 的 blob 比对，
-所以“重构版测试没有被改弱”这条证据依然成立（当前结果：`checked=15 mismatches=0`）。
+`refactor/tools/verify-harness-copy.ps1` 用 `-LegacyRef` 指向本机的历史引用（默认 `v1.1.1`，
+仅存在于开发机，不随仓库分发）；缺少该引用时脚本会明确报告 `no-legacy-reference`，不会静默通过。
 
-仓库顶层现在只保留 `README.md`、`refactor/`、`samples/`、`scripts/sync-cad-runtime.ps1`、
-`tools/cad/` 与忽略规则（`AGENTS.md` 是本机的协作约定文件，已在 `.gitignore` 中排除，不上传）。
+仓库顶层只保留 `README.md`、`refactor/`、`samples/`、`scripts/sync-cad-runtime.ps1`、
+`tools/cad/` 与忽略规则。
 
 ## 使用建议
 
 - 日常开发、构建与打包都以本目录为入口：`.\refactor\build.ps1` 与
   `.\refactor\package.ps1 -OutputRoot <交付目录> -BuildDirectory build-refactor -Force`。
 - 测试侧仍存在大量重复的窗口/临时库样板（详见报告“残留与后续项”），改动需要单独的功能卡与复验。
-- 迁移候选：标签 `v1.1.1` 内的 `tests/cad_converter_tests.py`（转换器 17 项检查）尚未迁入本目录，
-  如需纳入正式验证流程应连同运行库准备脚本一起迁入并复跑。
+- 迁移候选：本机历史版本里的 `tests/cad_converter_tests.py`（转换器 17 项检查）尚未迁入本目录，
+  如需纳入正式验证流程，应连同运行库准备脚本一起迁入并复跑并补进 CTest。

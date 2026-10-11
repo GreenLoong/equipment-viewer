@@ -5,8 +5,8 @@ Windows 桌面端设备与机械 CAD 查看器：导入 JSON 设备参数或真�
 在独立进程内完成，使用者不需要安装 Python 或 CAD 软件。
 
 **当前正式版本：1.2.0** — 正式源码树在 [`refactor/`](refactor/README.md)，可执行文件为 `设备查看器.exe`。
-本版按用户要求**整体移除“团队共享库 / 工艺批注”**这一可选服务（客户端、Node/MySQL/Redis 服务端、
-相关测试与契约文档一并删除，主程序不再链接 Qt Network）；1.1.1 及更早的历史实现完整保存在 Git 标签 `v1.1.1`。
+本版**整体移除“团队共享库 / 工艺批注”**这一可选服务（客户端、Node/MySQL/Redis 服务端、
+相关测试与契约文档一并删除，主程序不再链接 Qt Network）。
 
 ## 能做什么
 
@@ -53,9 +53,8 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
 | `scripts/sync-cad-runtime.ps1` | 校验签名与哈希后把私有 CAD 运行库同步到构建目录/交付目录 |
 | `tools/cad/` | CAD 运行库准备脚本（`setup_runtime.py`、`convert_step.py`、依赖清单） |
 
-1.1.1 及更早的历史实现与过程记录（原 `src/`、`tests/`、根 `CMakeLists.txt`、旧 `scripts/`、
-`docs/` 过程文档，以及团队共享库的 `api/` 服务端）已从工作树移除，完整保存在 Git 标签
-`v1.1.1`（另见 `docs/releases/` 各版本记录，同样位于该标签内）。
+仓库只维护当前实现：早期版本按原样演进到 1.2.0，过程中被替换或移除的模块不再保留在仓库里，
+避免出现两套并行实现。重构前后的对照与量化数据见 [去重报告](refactor/docs/dedup-report.md)。
 
 ## 架构与实现要点
 
@@ -97,8 +96,7 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
 | 资源基线 | 窗口与场景反复创建销毁后，控件、窗口、QObject 子树与 SQL 连接数回到基线 |
 | 交付包 | 包内以临时资料库实际启动并截图（`exit=0`）；`manifest.json` 记录版本、提交、文件数与 exe 哈希 |
 
-历史版本的验证记录（含 82 件装配 157558 顶点 / 175598 三角的原生全链、Redis/MySQL 回归等）
-保存在标签 `v1.1.1` 的 `docs/releases/` 下；当前版本的完整验证数据见
+当前版本的完整验证数据（构建、CTest、原生图形验收、真实 STEP 全链、打包冒烟）见
 [`refactor/docs/package/03-验证记录.md`](refactor/docs/package/03-验证记录.md)。
 上表数据来自实际执行：自动检查与原生图形验收分开记录，结论只覆盖执行过的检查项。
 
@@ -120,7 +118,7 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
 - 只在当前这台 Windows 电脑、当前 Qt 版本上验证；未在其它机器、高 DPI 多显示器组合、
   十万级三角以上装配与长时间连续运行下做量化验证。
 - 参数只能查看，不能编辑回写；展开与拉远不代表真实装配顺序、运动或碰撞约束。
-- 团队共享库/工艺批注：已按用户要求移除（历史实现见标签 `v1.1.1`），当前版本无多人协作能力。
+- 团队共享库/工艺批注：当前版本不含该功能，没有账号、权限与多人协作能力。
 - 以上结论只覆盖本机自动检查与原生图形验收；其它机器、其它 Qt 版本、长期运行与大型装配的表现未验证。
 
 ## 文档
