@@ -21,7 +21,7 @@
 | `samples/` | 虚构 JSON 与公开 STEP 样例（含许可） |
 | `scripts/sync-cad-runtime.ps1` | CAD 运行库同步（校验签名与哈希） |
 | `tools/cad/` | CAD 运行库准备脚本 |
-| `AGENTS.md` | 协作约定与常用命令 |
+| `AGENTS.md` | 协作约定与常用命令（仅本机保留，已加入 `.gitignore`，不上传） |
 
 1.1.1 及更早的历史实现与过程文档（原 `src/`、`tests/`、根 `CMakeLists.txt`、旧 `scripts/`、
 `docs/`，以及共享库服务端 `api/`）已从工作树删除，完整保存在 Git 标签 `v1.1.1`。
@@ -42,4 +42,4 @@
 - 取回历史文件：`git show v1.1.1:<路径>`，或 `git checkout v1.1.1 -- <路径>`（后者不要把结果提交进 `main`）。
 - 数据库与源码检查点分开：资料库只在本机 `data/`、备份在 `.recovery/`，都不进仓库；
   两者都不能靠 Git 回退恢复。
-- 打包与构建命令见 `refactor/README.md` 与 `AGENTS.md`。
+- 打包与构建命令见 `refactor/README.md`（本机的 `AGENTS.md` 里有同一套命令与修改纪律）。

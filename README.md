@@ -129,7 +129,7 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
   [技术说明](refactor/docs/package/02-技术说明.md)、[验证记录](refactor/docs/package/03-验证记录.md)
 - [重复实现审查与去重报告](refactor/docs/dedup-report.md)
 - [简历与面试演示指南](refactor/docs/package/05-简历与面试演示指南.md)、
-  [当前状态与恢复入口](refactor/docs/working-state.md)、[协作约定](AGENTS.md)
+  [当前状态与恢复入口](refactor/docs/working-state.md)
 
 ## 数据与恢复
 

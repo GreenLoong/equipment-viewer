@@ -40,6 +40,9 @@ compile_commands.json
 # 日志
 *.log
 
+# 本机协作约定：Agent 指令文件只留在工作目录，不上传
+/AGENTS.md
+
 # 本机配置与凭证
 .env
 .env.*

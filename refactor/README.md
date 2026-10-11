@@ -85,7 +85,7 @@ git worktree remove ..\ev-1.1.1
 所以“重构版测试没有被改弱”这条证据依然成立（当前结果：`checked=15 mismatches=0`）。
 
 仓库顶层现在只保留 `README.md`、`refactor/`、`samples/`、`scripts/sync-cad-runtime.ps1`、
-`tools/cad/`、`AGENTS.md` 与忽略规则。
+`tools/cad/` 与忽略规则（`AGENTS.md` 是本机的协作约定文件，已在 `.gitignore` 中排除，不上传）。
 
 ## 使用建议
 
