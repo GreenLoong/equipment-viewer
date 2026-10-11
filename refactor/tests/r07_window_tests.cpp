@@ -160,7 +160,7 @@ bool windowBehavior()
     REQUIRE(controller.isIsolationActive() && controller.hiddenPartIds() == hideForA);
     REQUIRE(clickPart(list, bId));
     REQUIRE(controller.selectedPartId() == bId && id->text() == bId && material->text() == QStringLiteral("45钢"));
-    // 1.1真人契约：隔离中有效单击即切换目标，清选中仍保隔离。
+    // 1.1 交互契约：隔离中有效单击即切换目标，清选中仍保隔离。
     REQUIRE(controller.isIsolationActive() && controller.hiddenPartIds() == hideForB);
     REQUIRE(capture(window, QStringLiteral("01-isolation-single-b-visible.png")));
     REQUIRE(clickPart(list, bId, true));

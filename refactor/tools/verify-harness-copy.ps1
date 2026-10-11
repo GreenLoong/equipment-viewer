@@ -8,8 +8,9 @@ $projectRoot = Split-Path -Parent $refactorRoot
 $legacyRef = 'v1.1.1'
 $gitArgs = @('-c', "safe.directory=$projectRoot", '-C', $projectRoot)
 # 1.2.0 起有意分叉的测试：整体移除“团队共享库/工艺批注”后，这几个文件删掉了相关步骤，
-# 与 1.1.1 不再逐字节一致，属预期差异，不计入不一致数量。
-$diverged = @('tests/cad_user_tests.cpp', 'tests/cad_import_process_tests.cpp', 'tests/reviewer_resource_tests.cpp')
+# 输出与注释里的内部术语也做了清理，与 1.1.1 不再逐字节一致，属预期差异，不计入不一致数量。
+$diverged = @('tests/cad_user_tests.cpp', 'tests/cad_import_process_tests.cpp', 'tests/reviewer_resource_tests.cpp',
+    'tests/desktop_assembly_user_tests.cpp', 'tests/r07_window_tests.cpp', 'tests/r11_desktop_tester.cpp')
 $mismatch = 0
 $checked = 0
 foreach ($relative in @('tests', 'tools')) {

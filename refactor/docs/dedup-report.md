@@ -69,7 +69,7 @@
    的窗口样板、`findChild` 控件定位块与跨文件夹具（例如
    `cad_user_tests.cpp:433` 与 `desktop_assembly_user_tests.cpp:325`、
    `cache_user_tests.cpp:111` 与 `shared_user_tests.cpp:122`）。本次不改测试，
-   原因是测试是验收证据，提取公共 harness 需要单独功能卡、影响面复验与独立审查。
+   原因是测试是验收证据，提取公共 harness 需要单独功能卡、影响面复验与一轮评审。
    建议后续按 `tests/support/harness.h`（窗口构造 + 控件定位 + 临时库 + 夹具）
    逐步迁移，一次只动一个测试目标并重跑该目标与其关联路径。
 
@@ -87,5 +87,5 @@
 | 原工程未改 | `git status --short`；`git diff --stat -- src tests CMakeLists.txt scripts tools samples` | 仅新增 `refactor/`；原源码无差异 |
 | 索引一致性 | `git rev-parse :refactor/tests/<f>` 与 `git rev-parse :tests/<f>` 逐文件比对 | 21 个测试文件与探针的 blob 完全相同，换行归一化后仍与原文件一致 |
 
-未做/未验证：未在其它机器或其它 Qt 版本验证；未做长期资源与性能对比；未接真人验收；
-未把本目录并入主树（合并需按补丁方式落到 `src/` 并重跑独立审查与真人验收）。
+未做/未验证：未在其它机器或其它 Qt 版本验证；未做长期资源与性能对比；未做用户验收；
+当时未把本目录并入主树（合并需按补丁方式落到原实现并重跑评审与验收）。

@@ -378,7 +378,7 @@ int main(int argc, char **argv)
         QTextStream(stderr) << "R11_TEST_FAIL database fingerprint changed" << Qt::endl;
         return 1;
     }
-    QTextStream(stdout) << "R11_TESTER accepted=1 realUserAcceptance=0 platform="
+    QTextStream(stdout) << "R11_TESTER accepted=1 userAcceptance=0 platform="
                         << QApplication::platformName() << Qt::endl;
     return 0;
 }

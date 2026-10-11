@@ -33,7 +33,7 @@
 #include <array>
 #include <limits>
 
-// 独立模拟用户回归：使用临时SQLite及真实控件事件，不操作正常数据库/后台服务。
+// 独立装配流程回归：使用临时SQLite及真实控件事件，不操作正常数据库/后台服务。
 namespace {
 #define REQUIRE(condition) do { if (!(condition)) { QTextStream(stderr) << "DESKTOP_ASSEMBLY_FAIL " << __LINE__ << ": " << #condition << Qt::endl; return false; } } while (false)
 
@@ -69,7 +69,7 @@ QByteArray fixture()
             {"dimensions", QJsonArray{40, 34, 28}}, {"position", QJsonArray{positions[i], 0, 0}}});
     }
     return QJsonDocument(QJsonObject{{"equipmentId", equipmentId},
-        {"equipmentName", QStringLiteral("独立模拟用户装配")}, {"parts", parts}}).toJson(QJsonDocument::Compact);
+        {"equipmentName", QStringLiteral("独立装配回归样本")}, {"parts", parts}}).toJson(QJsonDocument::Compact);
 }
 
 void drain()
@@ -436,6 +436,6 @@ int main(int argc, char **argv)
     QList<Part> source;
     if (!windowAndPersistence(temporary.filePath(QStringLiteral("independent.sqlite")), source)
         || !sceneInteraction(source) || !failureRecovery(source) || !lifetimeCycles(source)) return 1;
-    QTextStream(stdout) << "DESKTOP_ASSEMBLY_SIM accepted=1 realUserAcceptance=0" << Qt::endl;
+    QTextStream(stdout) << "DESKTOP_ASSEMBLY_SIM accepted=1 userAcceptance=0" << Qt::endl;
     return 0;
 }

@@ -202,7 +202,7 @@ int main(int argc, char **argv)
     REQUIRE(axisLength(rightPanel, 0) < 0.01);        // 右视栏：X 朝观察者
     REQUIRE(axisLength(topPanel, 0) > 38.0 && axisLength(rightPanel, 1) > 38.0);
 
-    QTextStream(stdout) << "AXIS_GIZMO accepted=1 realUserAcceptance=0 "
+    QTextStream(stdout) << "AXIS_GIZMO accepted=1 userAcceptance=0 "
                            "projection=web-equivalent foreshortening=1 depthOrder=1 perPanel=1"
                         << Qt::endl;
     return 0;

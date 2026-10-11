@@ -51,7 +51,7 @@
 #include <psapi.h>
 #endif
 
-// R08来自真人需求；本文件为Agent真实控件试用/自动验收，不冒充真人再次验收。
+// R08 的用户反馈已落地；本文件用真实控件事件做自动回归，结论只代表自动检查。
 namespace {
 QString bearingPath;
 QString assemblyPath;
@@ -555,7 +555,7 @@ bool assemblyPreviewCheck(const QString &databasePath)
     REQUIRE(restarted.loadParts(equipmentId, restartParts) && fingerprints(restartParts) == original);
     QTextStream(stdout) << "CAD_ASSEMBLY_PREVIEW parts=" << source.size() << " vertices=" << vertices << " triangles=" << triangles
         << " realStepImport=1 controlsByKeyboardMouse=1 fourViews=1 threePanelsGeometry=1 orderedAxis=1 pullOnlySelected=1 restoreSourceExact=1"
-        << " blankClearKeepsIsolation=1 databaseRestartExact=1 native=" << (QApplication::platformName() == QStringLiteral("windows")) << " agentTrial=1 realUserAcceptance=0" << Qt::endl;
+        << " blankClearKeepsIsolation=1 databaseRestartExact=1 native=" << (QApplication::platformName() == QStringLiteral("windows")) << " automatedTrial=1 userAcceptance=0" << Qt::endl;
     return true;
 }
 
@@ -869,6 +869,6 @@ int main(int argc, char **argv)
     window.close();
     if (!sqliteRecovery(database, assemblyId, assemblyFingerprint, data)) return 1;
     if (resourceCycles > 0 && !resourceRun(badFile)) return 1;
-    QTextStream(stdout) << "CAD_USER restartedSameSqlite=1 meshFingerprintExact=1 publicStepInputs=1 acceptance=1 agentTrial=1 realRequirementR08=1" << Qt::endl;
+    QTextStream(stdout) << "CAD_USER restartedSameSqlite=1 meshFingerprintExact=1 publicStepInputs=1 acceptance=1 automatedTrial=1 requirementR08=1" << Qt::endl;
     return 0;
 }

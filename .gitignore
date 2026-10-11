@@ -43,6 +43,12 @@ compile_commands.json
 # 本机协作约定：Agent 指令文件只留在工作目录，不上传
 /AGENTS.md
 
+# 本机私有资料（面试/演示准备等），不上传
+/.local/
+
+# 本机工作状态记录，不上传
+/refactor/docs/working-state.md
+
 # 本机配置与凭证
 .env
 .env.*

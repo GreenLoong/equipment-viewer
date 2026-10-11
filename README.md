@@ -21,7 +21,7 @@ Windows 桌面端设备与机械 CAD 查看器：导入 JSON 设备参数或真�
 
 ## 快速开始
 
-使用者（本机交付目录 `D:\作业\简历\cad查看器`）：
+使用者（拿到交付目录后）：
 
 ```text
 双击 设备查看器.exe          → 打开设备查看器并载入内置样例设备
@@ -38,7 +38,7 @@ Windows 桌面端设备与机械 CAD 查看器：导入 JSON 设备参数或真�
 build-refactor\bin\qt_sqlite_demo.exe --equipment-view
 
 # 打包成交付目录（只复制运行所需文件，不复制源码、测试、资料库与凭证）
-.\refactor\package.ps1 -OutputRoot 'D:\作业\简历\cad查看器' -BuildDirectory build-refactor -Force
+.\refactor\package.ps1 -OutputRoot <交付目录路径> -BuildDirectory build-refactor -Force
 ```
 
 命令行参数：`--equipment-view`（默认）、`--record-view`（保留的旧“记录示例”窗口）、
@@ -100,7 +100,7 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
 历史版本的验证记录（含 82 件装配 157558 顶点 / 175598 三角的原生全链、Redis/MySQL 回归等）
 保存在标签 `v1.1.1` 的 `docs/releases/` 下；当前版本的完整验证数据见
 [`refactor/docs/package/03-验证记录.md`](refactor/docs/package/03-验证记录.md)。
-自动检查、独立审查、模拟验收与真人验收分别记录，不互相替代。
+上表数据来自实际执行：自动检查与原生图形验收分开记录，结论只覆盖执行过的检查项。
 
 ## 版本历史
 
@@ -121,15 +121,14 @@ build-refactor\bin\qt_sqlite_demo.exe --equipment-view
   十万级三角以上装配与长时间连续运行下做量化验证。
 - 参数只能查看，不能编辑回写；展开与拉远不代表真实装配顺序、运动或碰撞约束。
 - 团队共享库/工艺批注：已按用户要求移除（历史实现见标签 `v1.1.1`），当前版本无多人协作能力。
-- 真人使用满意度验收尚未进行，仓库中的“模拟验收/独立审查”结论不等同于真人验收。
+- 以上结论只覆盖本机自动检查与原生图形验收；其它机器、其它 Qt 版本、长期运行与大型装配的表现未验证。
 
 ## 文档
 
 - [交付说明](refactor/docs/package/README.md)、[使用说明](refactor/docs/package/01-使用说明.md)、
   [技术说明](refactor/docs/package/02-技术说明.md)、[验证记录](refactor/docs/package/03-验证记录.md)
 - [重复实现审查与去重报告](refactor/docs/dedup-report.md)
-- [简历与面试演示指南](refactor/docs/package/05-简历与面试演示指南.md)、
-  [当前状态与恢复入口](refactor/docs/working-state.md)
+- 交付目录内的 `文档\` 是同一批文档的副本，随程序一起分发。
 
 ## 数据与恢复
 
