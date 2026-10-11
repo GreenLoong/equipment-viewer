@@ -5,7 +5,8 @@
 - **版本 1.2.0**（Git 标签 `v1.2.0`，`main` 同步）：去重重构版成为正式实现，
   团队共享库/工艺批注按用户要求整体移除。
 - **交付目录**：`D:\作业\简历\cad查看器`，533 个文件 / 238.5 MB，
-  `设备查看器.exe` SHA256 `446571B2DC1C86E98D1C7A9B640471707FC46CF5790041FF8DD42C1BEE918782`。
+  `设备查看器.exe` SHA256 `48B3D7D1316D5684C7081CDAA649F34CA25CD3B4942E82BE78AB7C207AF6FF88`
+  （仓库整理后重新构建并打包，`manifest.json` 中的源码提交为整理提交）。
 - **验证**：全量重建零警告；CTest **17/17 通过**（22.22 秒）；原生 `r11_desktop_tester`
   `accepted=1`（FBO 实测 `samples=4`、超采样 `2.0x`）；真实 STEP 6 件装配
   `parts=6 vertices=4162 triangles=4332`；`reviewer_resource_tests` 回到资源基线；
